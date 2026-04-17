@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anàlisi electoral Catalunya</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">
+          <div class="brand-ring"></div>
+          <div class="brand-ring ring-2"></div>
+          <div class="brand-ring ring-3"></div>
+        </div>
+        <div>
+          <div class="eyebrow">Anàlisi electoral</div>
+          <h1>Catalunya</h1>
+        </div>
+      </div>
+
+      <div class="panel search-panel">
+        <label class="sr-only" for="search-input">Cercar municipi</label>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 1 1 0 15a7.5 7.5 0 0 1 0-15Zm0 2a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11Zm7.85 11.94l2.83 2.83l-1.41 1.41l-2.83-2.83z"/></svg>
+          <input id="search-input" type="text" placeholder="Cercar municipi, comarca o província..." autocomplete="off">
+        </div>
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">Indicador</div>
+        <div class="metric-grid" id="metric-grid">
+          <button class="metric-btn active" data-metric="comuns_pct">Vots Comuns</button>
+          <button class="metric-btn" data-metric="participacio_pct">Participació</button>
+          <button class="metric-btn" data-metric="psc_pct">PSC</button>
+          <button class="metric-btn" data-metric="erc_pct">ERC</button>
+          <button class="metric-btn" data-metric="junts_pct">Junts</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="legend-header">
+          <div>
+            <div class="section-title">Escala</div>
+            <div class="section-subtitle" id="legend-title">% Comuns Sumar</div>
+          </div>
+          <div class="legend-bounds">
+            <span id="legend-min">0,0%</span>
+            <span id="legend-max">45,0%+</span>
+          </div>
+        </div>
+        <div id="legend" class="legend-scale"></div>
+        <div id="legend-labels" class="legend-labels"></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card large-card">
+          <div class="stat-topline" id="main-stat-label">% vot Comuns</div>
+          <div class="stat-main" id="main-stat-value">-</div>
+          <div class="stat-foot">Promig Catalunya</div>
+        </div>
+
+        <div class="stat-card split-card">
+          <div>
+            <div class="stat-topline">Municipis amb dades</div>
+            <div class="stat-number" id="municipis-count">-</div>
+          </div>
+          <div class="stat-aside">
+            <div class="stat-delta-label">Sense dades</div>
+            <div class="stat-delta" id="missing-count">-</div>
+          </div>
+        </div>
+
+        <div class="stat-card split-card">
+          <div>
+            <div class="stat-topline">Municipi líder</div>
+            <div class="stat-number small" id="leader-name">-</div>
+          </div>
+          <div class="stat-aside">
+            <div class="stat-delta-label">Valor</div>
+            <div class="stat-delta" id="leader-value">-</div>
+          </div>
+        </div>
+
+        <div class="stat-card split-card">
+          <div>
+            <div class="stat-topline" id="volume-label">Vots Comuns</div>
+            <div class="stat-number" id="volume-value">-</div>
+          </div>
+          <div class="stat-aside">
+            <div class="stat-delta-label">Màxim</div>
+            <div class="stat-delta" id="max-value">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel note-panel">
+        <div class="section-title">Llegenda d’ús</div>
+        <p>Passa el ratolí per destacar un municipi, fes clic per obrir el detall i usa el cercador per fer zoom directe.</p>
+      </div>
+    </aside>
+
+    <main class="map-area">
+      <div id="map"></div>
+      <div id="hover-card" class="hover-card hidden"></div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="script.js"></script>
+</body>
+</html>
