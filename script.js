@@ -807,6 +807,27 @@ function normalizeRows(rows) {
     }));
 }
 
+function debugDataMatch() {
+  const geoFeatures = state.geojson?.features || [];
+  const geoCodes = geoFeatures
+    .map(f => getFeatureCode(f))
+    .filter(v => v !== null);
+
+  const rowCodes = state.rows.map(r => r.codi_municipi);
+  const matched = geoCodes.filter(code => state.rowsByCode.has(code));
+
+  console.log('DEBUG GEOJSON features:', geoFeatures.length);
+  console.log('DEBUG rows JSON:', state.rows.length);
+  console.log('DEBUG geo codes sample:', geoCodes.slice(0, 10));
+  console.log('DEBUG row codes sample:', rowCodes.slice(0, 10));
+  console.log('DEBUG matched codes:', matched.length);
+
+  const debugEl = document.getElementById('summary-main-delta');
+  if (debugEl) {
+    debugEl.textContent = `match ${matched.length}/${geoFeatures.length}`;
+  }
+}
+
 async function init() {
   try {
     const [geojson, rawRows] = await Promise.all([
@@ -821,6 +842,8 @@ async function init() {
     state.rows.forEach(row => {
       state.rowsByCode.set(row.codi_municipi, row);
     });
+
+    debugDataMatch();
 
     renderModeButtons();
     updateLegend();
