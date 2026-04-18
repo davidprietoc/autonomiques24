@@ -3,141 +3,147 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Anàlisi electoral Catalunya · Versió 3</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <title>Mapa electoral Catalunya 2024</title>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="app">
-    <aside id="left-panel">
-      <div class="brand">
-        <div class="brand-mark">
-          <div class="brand-ring ring-1"></div>
-          <div class="brand-ring ring-2"></div>
-          <div class="brand-ring ring-3"></div>
-        </div>
-        <div>
-          <div class="eyebrow">Anàlisi electoral</div>
-          <h1>Catalunya</h1>
-        </div>
+  <div class="app-shell">
+    <aside class="left-sidebar">
+      <div class="sidebar-header">
+        <div class="eyebrow">Eleccions al Parlament</div>
+        <h1>Catalunya 2024</h1>
+        <p class="subtitle">
+          Resultats municipals interactius
+        </p>
       </div>
 
-      <div class="search-card">
-        <div class="search-wrap">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 0 4.03 11.6l4.43 4.44 1.41-1.42-4.43-4.43A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9.001A4.5 4.5 0 0 1 10.5 6Z"/></svg>
-          <input id="search-input" type="text" placeholder="Cercar municipi, comarca o província…" autocomplete="off" />
-        </div>
+      <section class="card search-card">
+        <label for="search-input" class="card-title">Cercador</label>
+        <input
+          id="search-input"
+          type="text"
+          placeholder="Cerca municipi, comarca o província"
+          autocomplete="off"
+        />
         <div id="search-results" class="search-results hidden"></div>
-      </div>
+      </section>
 
-      <section class="legend-card">
-        <div class="legend-top">
+      <section class="card">
+        <div class="card-title">Indicador</div>
+        <div id="mode-buttons" class="mode-buttons"></div>
+      </section>
+
+      <section class="card legend-card">
+        <div class="legend-header">
+          <div class="card-title">Escala</div>
+          <div id="legend-title" class="legend-title"></div>
+        </div>
+        <div class="legend-minmax">
           <span id="legend-min">0,0%</span>
-          <strong id="legend-title">% Comuns Sumar</strong>
-          <span id="legend-max">45,0%+</span>
+          <span id="legend-max">100,0%+</span>
         </div>
         <div id="legend-scale" class="legend-scale"></div>
         <div id="legend-labels" class="legend-labels"></div>
       </section>
 
-      <section class="mode-card">
-        <h2>Indicador</h2>
-        <div id="mode-buttons" class="mode-grid"></div>
-      </section>
-
       <section class="summary-grid">
-        <article class="stat-card accent">
-          <div class="stat-head">
-            <span id="summary-main-label">Vots Comuns</span>
-            <span id="summary-main-delta" class="delta">—</span>
-          </div>
-          <div id="summary-main-value" class="stat-value">—</div>
-          <div class="stat-sub">Catalunya</div>
+        <article class="card summary-card main-summary">
+          <div class="summary-label" id="summary-main-label">Indicador</div>
+          <div class="summary-value" id="summary-main-value">—</div>
+          <div class="delta" id="summary-main-delta">—</div>
         </article>
 
-        <article class="stat-card">
-          <div class="stat-head">
-            <span>Participació</span>
-            <span id="summary-participacio-delta" class="delta">—</span>
-          </div>
-          <div id="summary-participacio-value" class="stat-value">—</div>
-          <div class="stat-sub">Sobre cens total</div>
+        <article class="card summary-card">
+          <div class="summary-label">Participació</div>
+          <div class="summary-value" id="summary-participacio-value">—</div>
+          <div class="delta" id="summary-participacio-delta">—</div>
         </article>
 
-        <article class="stat-card">
-          <div class="stat-head">
-            <span>Municipis amb dades</span>
-            <span id="summary-municipis-share" class="muted">—</span>
-          </div>
-          <div id="summary-municipis-value" class="stat-value">—</div>
-          <div class="stat-sub">Cobertura del mapa</div>
+        <article class="card summary-card">
+          <div class="summary-label">Municipis amb dades</div>
+          <div class="summary-value" id="summary-municipis-value">—</div>
+          <div class="summary-sub" id="summary-municipis-share">—</div>
         </article>
 
-        <article class="stat-card">
-          <div class="stat-head">
-            <span>Municipi líder</span>
-            <span id="summary-lider-pct" class="delta positive">—</span>
-          </div>
-          <div id="summary-lider-value" class="stat-value leader">—</div>
-          <div id="summary-lider-sub" class="stat-sub">—</div>
+        <article class="card summary-card">
+          <div class="summary-label">Municipi líder</div>
+          <div class="summary-value" id="summary-lider-value">—</div>
+          <div class="summary-sub" id="summary-lider-sub">—</div>
+          <div class="summary-extra" id="summary-lider-pct">—</div>
         </article>
       </section>
 
-      <section class="notes-card">
-        <h3>Com funciona</h3>
+      <section class="card help-card">
+        <div class="card-title">Com usar el mapa</div>
         <ul>
-          <li>Passa el ratolí per un municipi per veure el resum ràpid.</li>
-          <li>Fes clic per fixar la informació detallada.</li>
-          <li>El panell dret es pot plegar o desplegar.</li>
+          <li>Passa el ratolí per sobre d’un municipi.</li>
+          <li>Fes clic per fixar-lo i veure més detall.</li>
+          <li>Usa el cercador per anar directament a un municipi, comarca o província.</li>
         </ul>
       </section>
     </aside>
 
-    <main id="map-shell">
+    <main class="map-stage">
       <div id="map"></div>
-      <div id="hover-card" class="hover-card hidden"></div>
-      <button id="panel-toggle" class="panel-toggle" aria-expanded="true" title="Mostrar o ocultar panell dret">❯</button>
-    </main>
 
-    <aside id="right-panel">
-      <div class="right-panel-inner">
-        <div class="right-panel-head">
-          <div>
-            <div class="eyebrow">Panell de partits</div>
-            <h2>Resultat agregat</h2>
+      <div id="hover-card" class="hover-card hidden"></div>
+
+      <div id="right-panel" class="right-panel collapsed">
+        <button id="panel-toggle" class="panel-toggle" aria-expanded="false">❮</button>
+
+        <div class="right-panel-inner">
+          <div class="right-panel-header">
+            <h3>Resultats per partit</h3>
+            <p>Agregat del conjunt de municipis</p>
           </div>
-          <div class="pill" id="comparison-pill">vs 2021</div>
+
+          <div id="party-cards"></div>
         </div>
-        <div id="party-cards" class="party-cards"></div>
       </div>
-    </aside>
+    </main>
   </div>
 
   <template id="party-card-template">
     <article class="party-card">
-      <div class="party-name"></div>
-      <div class="party-metric metric-top">
-        <div class="metric-value metric-wins">—</div>
-        <div class="metric-delta metric-wins-delta">—</div>
-        <div class="metric-label">Municipis</div>
+      <div class="party-card-top">
+        <div class="party-name">Partit</div>
       </div>
-      <div class="party-metric">
-        <div class="metric-value metric-votes">—</div>
-        <div class="metric-delta metric-votes-delta">—</div>
-        <div class="metric-label">Vots</div>
-      </div>
-      <div class="party-metric">
-        <div class="metric-value metric-pct">—</div>
-        <div class="metric-delta metric-pct-delta">—</div>
-        <div class="metric-label">% vot</div>
+
+      <div class="party-metrics">
+        <div class="metric-block">
+          <div class="metric-value metric-wins">0</div>
+          <div class="metric-label">Municipis líder</div>
+          <div class="metric-delta metric-wins-delta">0</div>
+        </div>
+
+        <div class="metric-block">
+          <div class="metric-value metric-votes">0</div>
+          <div class="metric-label">Vots</div>
+          <div class="metric-delta metric-votes-delta">0</div>
+        </div>
+
+        <div class="metric-block">
+          <div class="metric-value metric-pct">0%</div>
+          <div class="metric-label">% vot</div>
+          <div class="metric-delta metric-pct-delta">0%</div>
+        </div>
       </div>
     </article>
   </template>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
   <script src="script.js"></script>
 </body>
 </html>
