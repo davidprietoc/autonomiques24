@@ -1,336 +1,609 @@
-const map = L.map('map', {
-  zoomControl: true,
-  attributionControl: false,
-  preferCanvas: true
-});
 
-const COLORS = ['#f5f0f2', '#edd9e1', '#ddb3c4', '#cf8ca7', '#bc6486', '#a73a61', '#7f163e'];
-const METRICS = {
-  comuns_pct: {
-    label: '% Comuns Sumar',
-    shortLabel: 'Vots Comuns',
-    valueType: 'percent',
-    volumeField: 'comuns_vots',
-    volumeLabel: 'Vots Comuns',
-    breaks: [0, 2, 5, 10, 20, 30, 45]
-  },
-  participacio_pct: {
-    label: '% Participació',
-    shortLabel: 'Participació',
-    valueType: 'percent',
-    volumeField: 'vots_valids',
-    volumeLabel: 'Vots vàlids',
-    breaks: [0, 40, 50, 55, 60, 65, 70]
-  },
-  psc_pct: {
-    label: '% PSC',
-    shortLabel: 'PSC',
-    valueType: 'percent',
-    volumeField: 'psc_vots',
-    volumeLabel: 'Vots PSC',
-    breaks: [0, 5, 10, 20, 30, 40, 50]
-  },
-  erc_pct: {
-    label: '% ERC',
-    shortLabel: 'ERC',
-    valueType: 'percent',
-    volumeField: 'erc_vots',
-    volumeLabel: 'Vots ERC',
-    breaks: [0, 5, 10, 15, 20, 30, 40]
-  },
-  junts_pct: {
-    label: '% Junts',
-    shortLabel: 'Junts',
-    valueType: 'percent',
-    volumeField: 'junts_vots',
-    volumeLabel: 'Vots Junts',
-    breaks: [0, 5, 10, 15, 20, 30, 40]
-  }
+const MODES = [
+  { key: 'comuns_pct', label: 'Vots Comuns', legend: '% Comuns Sumar', type: 'pct', max: 45, decimals: 1, summaryLabel: 'Vots Comuns', accentParty: 'comuns' },
+  { key: 'participacio_pct', label: 'Participació', legend: '% participació', type: 'pct', max: 100, decimals: 1, summaryLabel: 'Participació', accentParty: 'comuns' },
+  { key: 'psc_pct', label: 'PSC', legend: '% PSC', type: 'pct', max: 45, decimals: 1, summaryLabel: 'Vots PSC', accentParty: 'psc' },
+  { key: 'junts_pct', label: 'Junts', legend: '% Junts', type: 'pct', max: 45, decimals: 1, summaryLabel: 'Vots Junts', accentParty: 'junts' },
+  { key: 'erc_pct', label: 'ERC', legend: '% ERC', type: 'pct', max: 45, decimals: 1, summaryLabel: 'Vots ERC', accentParty: 'erc' },
+  { key: 'pp_pct', label: 'PP', legend: '% PP', type: 'pct', max: 35, decimals: 1, summaryLabel: 'Vots PP', accentParty: 'pp' },
+  { key: 'vox_pct', label: 'VOX', legend: '% VOX', type: 'pct', max: 25, decimals: 1, summaryLabel: 'Vots VOX', accentParty: 'vox' },
+  { key: 'esquerres_pct', label: 'Bloc esquerres', legend: '% bloc esquerres', type: 'pct', max: 80, decimals: 1, summaryLabel: 'Bloc esquerres', accentParty: 'psc' },
+  { key: 'independentista_pct', label: 'Bloc indepe.', legend: '% bloc independentista', type: 'pct', max: 80, decimals: 1, summaryLabel: 'Bloc independentista', accentParty: 'junts' },
+  { key: 'winner', label: 'Guanyador', legend: 'Partit guanyador', type: 'winner', summaryLabel: 'Partit líder', accentParty: 'comuns' },
+];
+
+const PARTY_META = {
+  psc:    { name: 'PSC', color: '#ef4444' },
+  junts:  { name: 'Junts', color: '#14b8a6' },
+  erc:    { name: 'ERC', color: '#f59e0b' },
+  comuns: { name: 'Comuns', color: '#a21caf' },
+  pp:     { name: 'PP', color: '#2563eb' },
+  vox:    { name: 'VOX', color: '#84cc16' },
+  cup:    { name: 'CUP', color: '#eab308' },
+  ac:     { name: 'AC', color: '#1d4ed8' },
 };
 
-const metricButtons = [...document.querySelectorAll('.metric-btn')];
-const legendEl = document.getElementById('legend');
-const legendLabelsEl = document.getElementById('legend-labels');
-const legendTitleEl = document.getElementById('legend-title');
-const legendMinEl = document.getElementById('legend-min');
-const legendMaxEl = document.getElementById('legend-max');
-const mainStatLabelEl = document.getElementById('main-stat-label');
-const mainStatValueEl = document.getElementById('main-stat-value');
-const municipisCountEl = document.getElementById('municipis-count');
-const missingCountEl = document.getElementById('missing-count');
-const leaderNameEl = document.getElementById('leader-name');
-const leaderValueEl = document.getElementById('leader-value');
-const volumeLabelEl = document.getElementById('volume-label');
-const volumeValueEl = document.getElementById('volume-value');
-const maxValueEl = document.getElementById('max-value');
-const hoverCardEl = document.getElementById('hover-card');
-const searchInputEl = document.getElementById('search-input');
-const searchResultsEl = document.getElementById('search-results');
+const PARTY_ORDER = ['psc', 'junts', 'erc', 'comuns', 'pp', 'vox', 'cup', 'ac'];
 
-let currentMetric = 'comuns_pct';
-let geojsonLayer;
-let dataByMunicipi = {};
-let layerByCode = {};
-let rows = [];
+const state = {
+  rows: [],
+  rowsByCode: new Map(),
+  geojson: null,
+  map: null,
+  layer: null,
+  activeMode: MODES[0],
+  hoveredCode: null,
+  selectedCode: null,
+  searchIndex: [],
+};
+
+function getBasePath() {
+  const path = window.location.pathname;
+  if (path === '/' || path === '') return '';
+  return path.endsWith('/') ? path.slice(0, -1) : path.substring(0, path.lastIndexOf('/'));
+}
+
+async function fetchJson(relativePath) {
+  const base = getBasePath();
+  const url = `${base}${relativePath}?v=${Date.now()}`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`No s'ha pogut carregar ${relativePath} (${res.status})`);
+  return res.json();
+}
 
 function formatNumber(value) {
-  return Number(value || 0).toLocaleString('ca-ES');
+  return new Intl.NumberFormat('ca-ES').format(Math.round(value));
 }
-
-function formatPercent(value) {
-  if (value == null || Number.isNaN(value)) return 'Sense dades';
-  return `${Number(value).toFixed(1).replace('.', ',')}%`;
+function formatPct(value, decimals = 1) {
+  return `${Number(value).toFixed(decimals).replace('.', ',')}%`;
 }
-
-function getBreaks() {
-  return METRICS[currentMetric].breaks;
+function formatDelta(value, suffix = '', decimals = 1) {
+  const n = Number(value || 0);
+  const sign = n > 0 ? '+' : '';
+  if (suffix === '%') return `${sign}${n.toFixed(decimals).replace('.', ',')}%`;
+  return `${sign}${formatNumber(n)}`;
 }
+function deltaClass(value) {
+  if (Number(value) > 0) return 'positive';
+  if (Number(value) < 0) return 'negative';
+  return '';
+}
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function getSequentialColor(value, max) {
+  const t = clamp((Number(value) || 0) / max, 0, 1);
+  const stops = [
+    [245, 238, 242],
+    [232, 199, 214],
+    [214, 144, 173],
+    [191, 90, 131],
+    [157, 33, 73]
+  ];
+  const scaled = t * (stops.length - 1);
+  const i = Math.floor(scaled);
+  const frac = scaled - i;
+  const c1 = stops[i];
+  const c2 = stops[Math.min(i + 1, stops.length - 1)];
+  const rgb = c1.map((v, idx) => Math.round(v + (c2[idx] - v) * frac));
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+function getWinnerColor(winner) {
+  return PARTY_META[winner]?.color || '#d4d4d8';
+}
+function getFeatureCode(feature) {
+  return Number(feature.properties.codi_municipi);
+}
+function findTopParty(row) {
+  const entries = PARTY_ORDER.map(key => ({ key, votes: row[`${key}_vots`] || 0, pct: row[`${key}_pct`] || 0 }));
+  entries.sort((a,b)=> b.votes - a.votes);
+  return entries[0];
+}
+function getRanking(row) {
+  return PARTY_ORDER
+    .map(key => ({ key, name: PARTY_META[key].name, votes: row[`${key}_vots`] || 0, pct: row[`${key}_pct`] || 0 }))
+    .sort((a,b)=> b.votes - a.votes);
+}
+function rowValue(row, mode) {
+  if (!row) return null;
+  return row[mode.key];
+}
+function styleFeature(feature) {
+  const row = state.rowsByCode.get(getFeatureCode(feature));
+  const mode = state.activeMode;
+  let fillColor = '#f6f5f4';
+  let fillOpacity = 0.88;
 
-function getColor(value) {
-  if (value == null || Number.isNaN(value)) return '#ffffff';
-  const breaks = getBreaks();
-  for (let i = breaks.length - 1; i >= 0; i -= 1) {
-    if (value >= breaks[i]) return COLORS[i];
+  if (row) {
+    if (mode.type === 'winner') {
+      fillColor = getWinnerColor(row.winner);
+    } else {
+      fillColor = getSequentialColor(rowValue(row, mode), mode.max);
+    }
+  } else {
+    fillOpacity = 0.5;
   }
-  return COLORS[0];
-}
 
-function style(feature) {
-  const code = Number(feature.properties.codi_municipi);
-  const row = dataByMunicipi[code];
-  const value = row ? row[currentMetric] : null;
+  const isHovered = state.hoveredCode === getFeatureCode(feature);
+  const isSelected = state.selectedCode === getFeatureCode(feature);
 
   return {
-    fillColor: getColor(value),
-    weight: 0.9,
-    opacity: 1,
-    color: '#c9c5c4',
-    fillOpacity: 0.97
+    color: isSelected ? '#111827' : isHovered ? '#404040' : '#cfc9c3',
+    weight: isSelected ? 2.2 : isHovered ? 1.6 : 0.8,
+    fillColor,
+    fillOpacity
   };
 }
 
-function styleHover(layer) {
-  layer.setStyle({
-    weight: 2.2,
-    color: '#2b2b2b'
+function renderModeButtons() {
+  const wrap = document.getElementById('mode-buttons');
+  wrap.innerHTML = '';
+  MODES.forEach(mode => {
+    const btn = document.createElement('button');
+    btn.className = `mode-btn ${state.activeMode.key === mode.key ? 'active' : ''}`;
+    btn.textContent = mode.label;
+    btn.addEventListener('click', () => {
+      state.activeMode = mode;
+      renderModeButtons();
+      updateMapStyles();
+      updateLegend();
+      updateSummary();
+      updateHoverCard(state.selectedCode || state.hoveredCode);
+    });
+    wrap.appendChild(btn);
   });
-  if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-    layer.bringToFront();
+}
+
+function legendStops(mode) {
+  if (mode.type === 'winner') {
+    return PARTY_ORDER.slice(0,7).map(key => ({ color: PARTY_META[key].color, label: PARTY_META[key].name }));
+  }
+  const max = mode.max;
+  const cuts = max === 100 ? [0, 10, 20, 35, 50, 70, 100] : [0, max*0.05, max*0.12, max*0.22, max*0.40, max*0.66, max];
+  return cuts.map((cut, idx) => ({
+    color: getSequentialColor(cut, max),
+    label: idx === cuts.length - 1 ? `${Math.round(cut)}+` : `${Math.round(cut)}`
+  }));
+}
+
+function updateLegend() {
+  const mode = state.activeMode;
+  document.getElementById('legend-title').textContent = mode.legend;
+  const scale = document.getElementById('legend-scale');
+  const labels = document.getElementById('legend-labels');
+  scale.innerHTML = '';
+  labels.innerHTML = '';
+  const stops = legendStops(mode);
+  stops.forEach(stop => {
+    const el = document.createElement('div');
+    el.className = 'legend-stop';
+    el.style.background = stop.color;
+    scale.appendChild(el);
+    const lab = document.createElement('div');
+    lab.textContent = stop.label;
+    labels.appendChild(lab);
+  });
+  if (mode.type === 'winner') {
+    document.getElementById('legend-min').textContent = 'Partits';
+    document.getElementById('legend-max').textContent = 'Mapa';
+  } else {
+    document.getElementById('legend-min').textContent = '0,0%';
+    document.getElementById('legend-max').textContent = `${Number(mode.max).toFixed(1).replace('.', ',')}%+`;
   }
 }
 
-function popupHtml(props, row) {
-  return `
-    <div class="popup-card">
-      <div class="popup-title">${props.municipi}</div>
-      <div class="popup-subtitle">${props.comarca} · ${props.provincia}</div>
-      <div class="popup-grid">
-        <div><strong>${METRICS[currentMetric].label}</strong></div><div>${formatPercent(row?.[currentMetric])}</div>
-        <div>Cens</div><div>${formatNumber(row?.cens)}</div>
-        <div>Vots vàlids</div><div>${formatNumber(row?.vots_valids)}</div>
-        <div>Comuns</div><div>${formatNumber(row?.comuns_vots)} · ${formatPercent(row?.comuns_pct)}</div>
-        <div>PSC</div><div>${formatNumber(row?.psc_vots)} · ${formatPercent(row?.psc_pct)}</div>
-        <div>ERC</div><div>${formatNumber(row?.erc_vots)} · ${formatPercent(row?.erc_pct)}</div>
-        <div>Junts</div><div>${formatNumber(row?.junts_vots)} · ${formatPercent(row?.junts_pct)}</div>
-      </div>
-    </div>
-  `;
-}
-
-function updateHoverCard(props, row) {
-  hoverCardEl.innerHTML = `
-    <div class="hover-name">${props.municipi}</div>
-    <div class="hover-sub">${props.comarca} · ${props.provincia}</div>
-    <div class="hover-metric"><span>${METRICS[currentMetric].label}</span><strong>${formatPercent(row?.[currentMetric])}</strong></div>
-  `;
-  hoverCardEl.classList.remove('hidden');
-}
-
-function clearHoverCard() {
-  hoverCardEl.classList.add('hidden');
-}
-
-function onEachFeature(feature, layer) {
-  const code = Number(feature.properties.codi_municipi);
-  const row = dataByMunicipi[code];
-  layerByCode[code] = layer;
-
+function attachLayerInteractions(layer, feature) {
+  const code = getFeatureCode(feature);
   layer.on({
-    mouseover: (e) => {
-      styleHover(e.target);
-      updateHoverCard(feature.properties, row);
-      layer.bindTooltip(`${feature.properties.municipi}<br>${METRICS[currentMetric].label}: ${formatPercent(row?.[currentMetric])}`, {
-        sticky: true,
-        direction: 'auto',
-        opacity: 0.95
-      }).openTooltip();
+    mouseover: () => {
+      state.hoveredCode = code;
+      layer.setStyle(styleFeature(feature));
+      updateHoverCard(code);
+      if (state.layer) state.layer.eachLayer(l => {
+        if (l !== layer && l.feature) {
+          l.setStyle(styleFeature(l.feature));
+        }
+      });
     },
-    mouseout: (e) => {
-      geojsonLayer.resetStyle(e.target);
-      layer.closeTooltip();
-      clearHoverCard();
+    mouseout: () => {
+      if (state.selectedCode !== code) {
+        state.hoveredCode = null;
+      }
+      updateMapStyles();
+      updateHoverCard(state.selectedCode);
     },
     click: () => {
-      layer.bindPopup(popupHtml(feature.properties, row), { maxWidth: 320 }).openPopup();
+      state.selectedCode = code;
+      updateMapStyles();
+      updateHoverCard(code, true);
+      layer.openPopup();
+    }
+  });
+
+  const row = state.rowsByCode.get(code);
+  if (row) {
+    layer.bindTooltip(`
+      <div class="map-tooltip">
+        <strong>${row.municipi}</strong>
+        ${row.comarca} · ${row.provincia}<br>
+        ${state.activeMode.label}: <b>${formatModeValue(row, state.activeMode)}</b>
+      </div>
+    `, { sticky: true, direction: 'top', opacity: 1 });
+
+    layer.bindPopup(buildPopup(row), { maxWidth: 360 });
+  }
+}
+
+function buildPopup(row) {
+  const ranking = getRanking(row).slice(0,5);
+  return `
+    <div class="popup-title">${row.municipi}</div>
+    <div class="popup-meta">${row.comarca} · ${row.provincia}</div>
+    <div class="popup-grid">
+      <div><div class="label">Participació</div><div class="value">${formatPct(row.participacio_pct)}</div></div>
+      <div><div class="label">Vots vàlids</div><div class="value">${formatNumber(row.vots_valids)}</div></div>
+      <div><div class="label">Partit líder</div><div class="value">${PARTY_META[row.winner]?.name || '—'}</div></div>
+      <div><div class="label">Indicador actiu</div><div class="value">${formatModeValue(row, state.activeMode)}</div></div>
+    </div>
+    <div class="popup-ranking">
+      ${ranking.map(item => `
+        <div class="popup-ranking-row">
+          <span>${item.name}</span>
+          <strong>${formatPct(item.pct)}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function formatModeValue(row, mode) {
+  if (!row) return '—';
+  if (mode.type === 'winner') return PARTY_META[row.winner]?.name || '—';
+  return formatPct(rowValue(row, mode), mode.decimals ?? 1);
+}
+
+function updateMapStyles() {
+  if (!state.layer) return;
+  state.layer.eachLayer(layer => {
+    if (layer.feature) {
+      layer.setStyle(styleFeature(layer.feature));
+      const row = state.rowsByCode.get(getFeatureCode(layer.feature));
+      if (row && layer.getTooltip()) {
+        layer.setTooltipContent(`
+          <div class="map-tooltip">
+            <strong>${row.municipi}</strong>
+            ${row.comarca} · ${row.provincia}<br>
+            ${state.activeMode.label}: <b>${formatModeValue(row, state.activeMode)}</b>
+          </div>
+        `);
+      }
+      if (row && layer.getPopup()) {
+        layer.setPopupContent(buildPopup(row));
+      }
     }
   });
 }
 
-function buildLegend() {
-  const { label, breaks } = METRICS[currentMetric];
-  legendTitleEl.textContent = label;
-  legendMinEl.textContent = `${String(breaks[0]).replace('.', ',')}%`;
-  legendMaxEl.textContent = `${String(breaks[breaks.length - 1]).replace('.', ',')}%+`;
-  legendEl.innerHTML = COLORS.map(color => `<div class="legend-step" style="background:${color}"></div>`).join('');
-  legendLabelsEl.innerHTML = breaks.map((start, idx) => {
-    const next = breaks[idx + 1];
-    const text = next == null ? `${start}+` : idx === 0 ? `<${next}` : `${start}–${next}`;
-    return `<div>${String(text).replace('.', ',')}</div>`;
-  }).join('');
-}
-
-function updateStats() {
-  const validRows = rows.filter(row => typeof row[currentMetric] === 'number' && !Number.isNaN(row[currentMetric]));
-  const missing = rows.length - validRows.length;
-  municipisCountEl.textContent = formatNumber(validRows.length);
-  missingCountEl.textContent = formatNumber(missing);
-
-  if (!validRows.length) {
-    mainStatLabelEl.textContent = METRICS[currentMetric].label;
-    mainStatValueEl.textContent = '-';
-    leaderNameEl.textContent = '-';
-    leaderValueEl.textContent = '-';
-    volumeLabelEl.textContent = METRICS[currentMetric].volumeLabel;
-    volumeValueEl.textContent = '-';
-    maxValueEl.textContent = '-';
+function updateHoverCard(code) {
+  const card = document.getElementById('hover-card');
+  if (!code) {
+    card.classList.add('hidden');
     return;
   }
-
-  const avg = validRows.reduce((sum, row) => sum + row[currentMetric], 0) / validRows.length;
-  const leader = validRows.reduce((best, row) => row[currentMetric] > best[currentMetric] ? row : best, validRows[0]);
-  const volumeField = METRICS[currentMetric].volumeField;
-  const totalVolume = validRows.reduce((sum, row) => sum + Number(row[volumeField] || 0), 0);
-
-  mainStatLabelEl.textContent = METRICS[currentMetric].label;
-  mainStatValueEl.textContent = formatPercent(avg);
-  leaderNameEl.textContent = leader.municipi;
-  leaderValueEl.textContent = formatPercent(leader[currentMetric]);
-  volumeLabelEl.textContent = METRICS[currentMetric].volumeLabel;
-  volumeValueEl.textContent = formatNumber(totalVolume);
-  maxValueEl.textContent = formatPercent(leader[currentMetric]);
+  const row = state.rowsByCode.get(Number(code));
+  if (!row) {
+    card.classList.add('hidden');
+    return;
+  }
+  const top = findTopParty(row);
+  card.innerHTML = `
+    <h3>${row.municipi}</h3>
+    <div class="meta">${row.comarca} · ${row.provincia}</div>
+    <div class="party-badge"><span class="party-dot" style="background:${PARTY_META[top.key].color}"></span> Lidera ${PARTY_META[top.key].name}</div>
+    <div class="hover-grid" style="margin-top:12px">
+      <div><div class="k">${state.activeMode.label}</div><div class="v">${formatModeValue(row, state.activeMode)}</div></div>
+      <div><div class="k">Participació</div><div class="v">${formatPct(row.participacio_pct)}</div></div>
+      <div><div class="k">Vots vàlids</div><div class="v">${formatNumber(row.vots_valids)}</div></div>
+      <div><div class="k">Bloc indepe.</div><div class="v">${formatPct(row.independentista_pct)}</div></div>
+    </div>
+  `;
+  card.classList.remove('hidden');
 }
 
-function refreshMap() {
-  buildLegend();
-  updateStats();
-  geojsonLayer.setStyle(style);
-  geojsonLayer.eachLayer(layer => {
-    if (layer.isPopupOpen()) {
-      const code = Number(layer.feature.properties.codi_municipi);
-      const row = dataByMunicipi[code];
-      layer.setPopupContent(popupHtml(layer.feature.properties, row));
-    }
+function updateSummary() {
+  const mode = state.activeMode;
+  const rows = state.rows;
+  const totalMunicipis = rows.length;
+  const withData = rows.filter(r => rowValue(r, mode) !== null && rowValue(r, mode) !== undefined).length;
+  const topRow = mode.type === 'winner'
+    ? rows.reduce((best, r) => {
+        const curr = r[`${r.winner}_pct`] || 0;
+        const bestVal = best ? (best[`${best.winner}_pct`] || 0) : -1;
+        return curr > bestVal ? r : best;
+      }, null)
+    : rows.reduce((best, r) => (rowValue(r, mode) > (best ? rowValue(best, mode) : -Infinity) ? r : best), null);
+
+  let mainValue = '—';
+  let mainDelta = '—';
+  if (mode.type === 'winner') {
+    const counts = {};
+    rows.forEach(r => counts[r.winner] = (counts[r.winner] || 0) + 1);
+    const leaderKey = Object.entries(counts).sort((a,b)=> b[1]-a[1])[0]?.[0];
+    mainValue = PARTY_META[leaderKey]?.name || '—';
+    mainDelta = `${counts[leaderKey] || 0} municipis`;
+  } else if (mode.key === 'participacio_pct') {
+    const totalCens = rows.reduce((sum, r) => sum + r.cens, 0);
+    const totalValids = rows.reduce((sum, r) => sum + r.vots_valids, 0);
+    const totalPrevPctWeighted = rows.reduce((sum, r) => sum + ((r.participacio_2021_pct || 0) * r.cens), 0) / totalCens;
+    const pct = totalValids / totalCens * 100;
+    mainValue = formatPct(pct);
+    mainDelta = formatDelta(pct - totalPrevPctWeighted, '%');
+  } else {
+    const votesKey = mode.key.replace('_pct', '_vots');
+    const deltaKey = mode.key.replace('_pct', '_delta_vots');
+    const totalVotes = rows.reduce((sum, r) => sum + (r[votesKey] || 0), 0);
+    const totalDelta = rows.reduce((sum, r) => sum + (r[deltaKey] || 0), 0);
+    mainValue = formatNumber(totalVotes);
+    mainDelta = formatDelta(totalDelta);
+  }
+
+  document.getElementById('summary-main-label').textContent = mode.summaryLabel;
+  const mainDeltaEl = document.getElementById('summary-main-delta');
+  mainDeltaEl.textContent = mainDelta;
+  mainDeltaEl.className = `delta ${deltaClass(mainDelta.replace(/[^\d\-+,]/g, '').replace(',', '.'))}`;
+  document.getElementById('summary-main-value').textContent = mainValue;
+
+  const totalCens = rows.reduce((sum, r) => sum + r.cens, 0);
+  const totalValids = rows.reduce((sum, r) => sum + r.vots_valids, 0);
+  const totalPrevPctWeighted = rows.reduce((sum, r) => sum + ((r.participacio_2021_pct || 0) * r.cens), 0) / totalCens;
+  const partPct = totalValids / totalCens * 100;
+  document.getElementById('summary-participacio-value').textContent = formatPct(partPct);
+  const partDelta = document.getElementById('summary-participacio-delta');
+  partDelta.textContent = formatDelta(partPct - totalPrevPctWeighted, '%');
+  partDelta.className = `delta ${deltaClass(partPct - totalPrevPctWeighted)}`;
+
+  document.getElementById('summary-municipis-value').textContent = formatNumber(withData);
+  document.getElementById('summary-municipis-share').textContent = `${withData}/${totalMunicipis}`;
+
+  if (topRow) {
+    document.getElementById('summary-lider-value').textContent = topRow.municipi;
+    document.getElementById('summary-lider-sub').textContent = `${topRow.comarca} · ${state.activeMode.type === 'winner' ? PARTY_META[topRow.winner]?.name : state.activeMode.label}`;
+    document.getElementById('summary-lider-pct').textContent = state.activeMode.type === 'winner'
+      ? formatPct(topRow[`${topRow.winner}_pct`] || 0)
+      : formatModeValue(topRow, mode);
+  }
+}
+
+function buildPartyCards() {
+  const container = document.getElementById('party-cards');
+  const template = document.getElementById('party-card-template');
+  container.innerHTML = '';
+
+  const totalValids = state.rows.reduce((sum, r) => sum + r.vots_valids, 0);
+
+  const summaries = PARTY_ORDER.map(key => {
+    const votes = state.rows.reduce((sum, r) => sum + (r[`${key}_vots`] || 0), 0);
+    const prevVotes = state.rows.reduce((sum, r) => sum + ((r[`${key}_vots`] || 0) - (r[`${key}_delta_vots`] || 0)), 0);
+    const pct = totalValids ? votes / totalValids * 100 : 0;
+    const prevPctWeightedVotes = state.rows.reduce((sum, r) => sum + (((r[`${key}_vots`] || 0) - (r[`${key}_delta_vots`] || 0))), 0);
+    const prevPct = totalValids ? prevPctWeightedVotes / totalValids * 100 : 0;
+    const wins = state.rows.filter(r => r.winner === key).length;
+    const prevWins = state.rows.filter(r => r.winner_2021 === key).length;
+    return {
+      key,
+      votes,
+      prevVotes,
+      pct,
+      prevPct,
+      wins,
+      prevWins
+    };
+  }).sort((a,b) => b.votes - a.votes);
+
+  summaries.forEach(item => {
+    const node = template.content.firstElementChild.cloneNode(true);
+    const party = PARTY_META[item.key];
+    node.style.borderColor = party.color;
+    node.querySelector('.party-name').textContent = party.name;
+    node.querySelector('.party-name').style.color = party.color;
+
+    node.querySelector('.metric-wins').textContent = formatNumber(item.wins);
+    const winsDelta = item.wins - item.prevWins;
+    const winsDeltaEl = node.querySelector('.metric-wins-delta');
+    winsDeltaEl.textContent = formatDelta(winsDelta);
+    winsDeltaEl.classList.add(deltaClass(winsDelta));
+
+    node.querySelector('.metric-votes').textContent = formatNumber(item.votes);
+    const voteDelta = item.votes - item.prevVotes;
+    const votesDeltaEl = node.querySelector('.metric-votes-delta');
+    votesDeltaEl.textContent = formatDelta(voteDelta);
+    votesDeltaEl.classList.add(deltaClass(voteDelta));
+
+    node.querySelector('.metric-pct').textContent = formatPct(item.pct);
+    const pctDelta = item.pct - item.prevPct;
+    const pctDeltaEl = node.querySelector('.metric-pct-delta');
+    pctDeltaEl.textContent = formatDelta(pctDelta, '%');
+    pctDeltaEl.classList.add(deltaClass(pctDelta));
+
+    container.appendChild(node);
   });
 }
 
-function setMetric(metricKey) {
-  currentMetric = metricKey;
-  metricButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.metric === metricKey));
-  refreshMap();
+function fitToCatalonia() {
+  if (!state.layer) return;
+  state.map.fitBounds(state.layer.getBounds(), { padding: [18,18] });
 }
 
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+function buildSearchIndex() {
+  const items = [];
+  state.rows.forEach(row => {
+    items.push({
+      type: 'municipi',
+      label: row.municipi,
+      subtitle: `${row.comarca} · ${row.provincia}`,
+      code: row.codi_municipi
+    });
+  });
+
+  const comarcaSet = new Map();
+  state.rows.forEach(row => {
+    if (!comarcaSet.has(row.comarca)) {
+      comarcaSet.set(row.comarca, { type: 'comarca', label: row.comarca, subtitle: row.provincia, rows: [] });
+    }
+    comarcaSet.get(row.comarca).rows.push(row.codi_municipi);
+  });
+
+  const provSet = new Map();
+  state.rows.forEach(row => {
+    if (!provSet.has(row.provincia)) {
+      provSet.set(row.provincia, { type: 'provincia', label: row.provincia, subtitle: 'Província', rows: [] });
+    }
+    provSet.get(row.provincia).rows.push(row.codi_municipi);
+  });
+
+  state.searchIndex = items.concat([...comarcaSet.values()], [...provSet.values()]);
 }
 
-function renderSearchResults(items) {
-  if (!items.length) {
-    searchResultsEl.innerHTML = '<div class="search-result"><strong>Cap resultat</strong><span>Prova amb un altre municipi o comarca</span></div>';
-    searchResultsEl.classList.remove('hidden');
+function renderSearchResults(matches) {
+  const box = document.getElementById('search-results');
+  if (!matches.length) {
+    box.classList.add('hidden');
+    box.innerHTML = '';
     return;
   }
-
-  searchResultsEl.innerHTML = items.slice(0, 8).map(row => `
-    <div class="search-result" data-code="${row.codi_municipi}">
-      <strong>${escapeHtml(row.municipi)}</strong>
-      <span>${escapeHtml(row.comarca)} · ${escapeHtml(row.provincia)}</span>
+  box.innerHTML = matches.slice(0,10).map(item => `
+    <div class="search-item" data-type="${item.type}" data-code="${item.code || ''}" data-label="${item.label}">
+      <strong>${item.label}</strong>
+      <span>${item.type} · ${item.subtitle}</span>
     </div>
   `).join('');
-  searchResultsEl.classList.remove('hidden');
+  box.classList.remove('hidden');
+  box.querySelectorAll('.search-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const type = el.dataset.type;
+      const label = el.dataset.label;
+      if (type === 'municipi') {
+        focusMunicipi(Number(el.dataset.code));
+      } else {
+        focusGroup(type, label);
+      }
+      box.classList.add('hidden');
+      document.getElementById('search-input').value = label;
+    });
+  });
 }
 
-function zoomToMunicipi(code) {
-  const layer = layerByCode[Number(code)];
-  if (!layer) return;
-  map.fitBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 11 });
-  styleHover(layer);
-  const row = dataByMunicipi[Number(code)];
-  updateHoverCard(layer.feature.properties, row);
-  layer.bindPopup(popupHtml(layer.feature.properties, row), { maxWidth: 320 }).openPopup();
-  window.setTimeout(() => geojsonLayer.resetStyle(layer), 1200);
+function focusMunicipi(code) {
+  let targetLayer = null;
+  state.layer.eachLayer(layer => {
+    if (getFeatureCode(layer.feature) === code) targetLayer = layer;
+  });
+  if (targetLayer) {
+    state.selectedCode = code;
+    updateMapStyles();
+    state.map.fitBounds(targetLayer.getBounds(), { padding:[40,40], maxZoom: 11 });
+    targetLayer.openPopup();
+    updateHoverCard(code, true);
+  }
 }
 
-function runSearch(query) {
-  const q = query.trim().toLowerCase();
-  if (!q) {
-    searchResultsEl.classList.add('hidden');
-    searchResultsEl.innerHTML = '';
-    return;
+function focusGroup(type, label) {
+  const codes = state.rows
+    .filter(r => r[type] === label)
+    .map(r => r.codi_municipi);
+  let bounds = null;
+  state.layer.eachLayer(layer => {
+    if (codes.includes(getFeatureCode(layer.feature))) {
+      bounds = bounds ? bounds.extend(layer.getBounds()) : layer.getBounds();
+    }
+  });
+  if (bounds) {
+    state.selectedCode = null;
+    updateMapStyles();
+    state.map.fitBounds(bounds, { padding:[30,30] });
+    document.getElementById('hover-card').classList.add('hidden');
   }
-
-  const matches = rows.filter(row =>
-    row.municipi.toLowerCase().includes(q) ||
-    row.comarca.toLowerCase().includes(q) ||
-    row.provincia.toLowerCase().includes(q)
-  );
-  renderSearchResults(matches);
 }
 
-searchInputEl.addEventListener('input', (e) => runSearch(e.target.value));
-searchInputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    searchResultsEl.classList.add('hidden');
-  }
-});
-searchResultsEl.addEventListener('click', (e) => {
-  const item = e.target.closest('.search-result[data-code]');
-  if (!item) return;
-  const code = item.dataset.code;
-  const row = dataByMunicipi[Number(code)];
-  searchInputEl.value = row.municipi;
-  searchResultsEl.classList.add('hidden');
-  zoomToMunicipi(code);
-});
-document.addEventListener('click', (e) => {
-  if (!searchResultsEl.contains(e.target) && e.target !== searchInputEl) {
-    searchResultsEl.classList.add('hidden');
-  }
-});
-metricButtons.forEach(btn => btn.addEventListener('click', () => setMetric(btn.dataset.metric)));
+function bindSearch() {
+  const input = document.getElementById('search-input');
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) {
+      renderSearchResults([]);
+      return;
+    }
+    const matches = state.searchIndex.filter(item =>
+      item.label.toLowerCase().includes(q) ||
+      item.subtitle.toLowerCase().includes(q)
+    );
+    renderSearchResults(matches);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-card')) {
+      document.getElementById('search-results').classList.add('hidden');
+    }
+  });
+}
 
-Promise.all([
-  fetch('./data/base.geojson').then(r => r.json()),
-  fetch('./data/dades_municipals.json').then(r => r.json())
-]).then(([geojson, dataRows]) => {
-  rows = dataRows;
-  dataRows.forEach(row => {
-    dataByMunicipi[Number(row.codi_municipi)] = row;
+function bindPanelToggle() {
+  const btn = document.getElementById('panel-toggle');
+  const panel = document.getElementById('right-panel');
+  btn.addEventListener('click', () => {
+    panel.classList.toggle('collapsed');
+    btn.classList.toggle('collapsed');
+    const collapsed = panel.classList.contains('collapsed');
+    btn.textContent = collapsed ? '❮' : '❯';
+    btn.setAttribute('aria-expanded', String(!collapsed));
+  });
+}
+
+function createMap() {
+  state.map = L.map('map', {
+    zoomControl: true,
+    attributionControl: false,
+    minZoom: 7,
+    maxZoom: 12,
+    preferCanvas: true
   });
 
-  geojsonLayer = L.geoJSON(geojson, {
-    style,
-    onEachFeature
-  }).addTo(map);
+  state.layer = L.geoJSON(state.geojson, {
+    style: styleFeature,
+    onEachFeature: attachLayerInteractions
+  }).addTo(state.map);
 
-  map.fitBounds(geojsonLayer.getBounds(), { padding: [24, 24] });
-  buildLegend();
-  updateStats();
-}).catch((error) => {
-  console.error(error);
-  alert('No s’han pogut carregar les dades. Revisa les rutes dels fitxers o torna a desplegar GitHub Pages.');
-});
+  fitToCatalonia();
+
+  state.map.on('click', () => {
+    state.selectedCode = null;
+    updateMapStyles();
+    updateHoverCard(state.hoveredCode);
+  });
+}
+
+async function init() {
+  try {
+    const [geojson, rows] = await Promise.all([
+      fetchJson('/data/base.geojson'),
+      fetchJson('/data/dades_municipals.json')
+    ]);
+
+    state.geojson = geojson;
+    state.rows = rows;
+    rows.forEach(row => state.rowsByCode.set(Number(row.codi_municipi), row));
+
+    renderModeButtons();
+    updateLegend();
+    buildPartyCards();
+    buildSearchIndex();
+    bindSearch();
+    bindPanelToggle();
+    createMap();
+    updateSummary();
+  } catch (error) {
+    console.error(error);
+    alert(`No s’han pogut carregar les dades.\n\n${error.message}`);
+  }
+}
+
+init();
