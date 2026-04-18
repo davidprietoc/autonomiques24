@@ -8,8 +8,6 @@
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
   />
 
   <link rel="stylesheet" href="style.css" />
@@ -19,131 +17,71 @@
     <aside class="left-sidebar">
       <div class="sidebar-header">
         <div class="eyebrow">Eleccions al Parlament</div>
-        <h1>Catalunya 2024</h1>
-        <p class="subtitle">
-          Resultats municipals interactius
-        </p>
+        <h1>Catalunya 2024 TEST</h1>
+        <p class="subtitle">Resultats municipals interactius</p>
       </div>
 
       <section class="card search-card">
         <label for="search-input" class="card-title">Cercador</label>
-        <input
-          id="search-input"
-          type="text"
-          placeholder="Cerca municipi, comarca o província"
-          autocomplete="off"
-        />
+        <input id="search-input" type="text" placeholder="Cerca municipi..." />
         <div id="search-results" class="search-results hidden"></div>
       </section>
 
       <section class="card">
         <div class="card-title">Indicador</div>
-        <div id="mode-buttons" class="mode-buttons"></div>
+        <div id="mode-buttons"></div>
       </section>
 
       <section class="card legend-card">
-        <div class="legend-header">
-          <div class="card-title">Escala</div>
-          <div id="legend-title" class="legend-title"></div>
-        </div>
-        <div class="legend-minmax">
-          <span id="legend-min">0,0%</span>
-          <span id="legend-max">100,0%+</span>
-        </div>
-        <div id="legend-scale" class="legend-scale"></div>
-        <div id="legend-labels" class="legend-labels"></div>
+        <div class="card-title">Escala</div>
+        <div id="legend-title"></div>
+        <div id="legend-scale"></div>
+        <div id="legend-labels"></div>
+        <span id="legend-min"></span>
+        <span id="legend-max"></span>
       </section>
 
-      <section class="summary-grid">
-        <article class="card summary-card main-summary">
-          <div class="summary-label" id="summary-main-label">Indicador</div>
-          <div class="summary-value" id="summary-main-value">—</div>
-          <div class="delta" id="summary-main-delta">—</div>
-        </article>
+      <section>
+        <div id="summary-main-label"></div>
+        <div id="summary-main-value"></div>
+        <div id="summary-main-delta"></div>
 
-        <article class="card summary-card">
-          <div class="summary-label">Participació</div>
-          <div class="summary-value" id="summary-participacio-value">—</div>
-          <div class="delta" id="summary-participacio-delta">—</div>
-        </article>
+        <div id="summary-participacio-value"></div>
+        <div id="summary-participacio-delta"></div>
 
-        <article class="card summary-card">
-          <div class="summary-label">Municipis amb dades</div>
-          <div class="summary-value" id="summary-municipis-value">—</div>
-          <div class="summary-sub" id="summary-municipis-share">—</div>
-        </article>
+        <div id="summary-municipis-value"></div>
+        <div id="summary-municipis-share"></div>
 
-        <article class="card summary-card">
-          <div class="summary-label">Municipi líder</div>
-          <div class="summary-value" id="summary-lider-value">—</div>
-          <div class="summary-sub" id="summary-lider-sub">—</div>
-          <div class="summary-extra" id="summary-lider-pct">—</div>
-        </article>
-      </section>
-
-      <section class="card help-card">
-        <div class="card-title">Com usar el mapa</div>
-        <ul>
-          <li>Passa el ratolí per sobre d’un municipi.</li>
-          <li>Fes clic per fixar-lo i veure més detall.</li>
-          <li>Usa el cercador per anar directament a un municipi, comarca o província.</li>
-        </ul>
+        <div id="summary-lider-value"></div>
+        <div id="summary-lider-sub"></div>
+        <div id="summary-lider-pct"></div>
       </section>
     </aside>
 
     <main class="map-stage">
       <div id="map"></div>
+      <div id="hover-card" class="hidden"></div>
 
-      <div id="hover-card" class="hover-card hidden"></div>
-
-      <div id="right-panel" class="right-panel collapsed">
-        <button id="panel-toggle" class="panel-toggle" aria-expanded="false">❮</button>
-
-        <div class="right-panel-inner">
-          <div class="right-panel-header">
-            <h3>Resultats per partit</h3>
-            <p>Agregat del conjunt de municipis</p>
-          </div>
-
-          <div id="party-cards"></div>
-        </div>
+      <div id="right-panel" class="collapsed">
+        <button id="panel-toggle">❮</button>
+        <div id="party-cards"></div>
       </div>
     </main>
   </div>
 
   <template id="party-card-template">
-    <article class="party-card">
-      <div class="party-card-top">
-        <div class="party-name">Partit</div>
-      </div>
-
-      <div class="party-metrics">
-        <div class="metric-block">
-          <div class="metric-value metric-wins">0</div>
-          <div class="metric-label">Municipis líder</div>
-          <div class="metric-delta metric-wins-delta">0</div>
-        </div>
-
-        <div class="metric-block">
-          <div class="metric-value metric-votes">0</div>
-          <div class="metric-label">Vots</div>
-          <div class="metric-delta metric-votes-delta">0</div>
-        </div>
-
-        <div class="metric-block">
-          <div class="metric-value metric-pct">0%</div>
-          <div class="metric-label">% vot</div>
-          <div class="metric-delta metric-pct-delta">0%</div>
-        </div>
-      </div>
-    </article>
+    <div class="party-card">
+      <div class="party-name"></div>
+      <div class="metric-wins"></div>
+      <div class="metric-wins-delta"></div>
+      <div class="metric-votes"></div>
+      <div class="metric-votes-delta"></div>
+      <div class="metric-pct"></div>
+      <div class="metric-pct-delta"></div>
+    </div>
   </template>
 
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
