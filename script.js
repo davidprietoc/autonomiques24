@@ -557,7 +557,6 @@ function bindPanelToggle() {
     btn.setAttribute('aria-expanded', String(!collapsed));
   });
 }
-
 function createMap() {
   state.map = L.map('map', {
     zoomControl: true,
@@ -607,3 +606,4 @@ async function init() {
 }
 
 init();
+
