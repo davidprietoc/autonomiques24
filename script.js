@@ -252,20 +252,41 @@ function updateLegend() {
 
 function buildPopup(row) {
   const ranking = getRanking(row).slice(0, 5);
+  const winnerName = PARTY_META[row.winner]?.name || '—';
+  const winnerPct = row.winner ? formatPct(row[`${row.winner}_pct`] || 0) : '—';
 
   return `
     <div class="popup-title">${row.municipi || '—'}</div>
     <div class="popup-meta">${row.comarca || '—'} · ${row.provincia || '—'}</div>
-    <div class="popup-grid">
-      <div><div class="label">Participació</div><div class="value">${formatPct(row.participacio_pct)}</div></div>
-      <div><div class="label">Vots vàlids</div><div class="value">${formatNumber(row.vots_valids)}</div></div>
-      <div><div class="label">Partit líder</div><div class="value">${PARTY_META[row.winner]?.name || '—'}</div></div>
-      <div><div class="label">Indicador actiu</div><div class="value">${formatModeValue(row, state.activeMode)}</div></div>
+
+    <div class="popup-highlight">
+      <span class="popup-highlight-party">${winnerName}</span>
+      <span class="popup-highlight-pct">${winnerPct}</span>
     </div>
+
+    <div class="popup-grid">
+      <div>
+        <div class="label">Participació</div>
+        <div class="value">${formatPct(row.participacio_pct)}</div>
+      </div>
+      <div>
+        <div class="label">Vots vàlids</div>
+        <div class="value">${formatNumber(row.vots_valids)}</div>
+      </div>
+      <div>
+        <div class="label">Bloc esquerres</div>
+        <div class="value">${formatPct(row.esquerres_pct)}</div>
+      </div>
+      <div>
+        <div class="label">Bloc indepe.</div>
+        <div class="value">${formatPct(row.independentista_pct)}</div>
+      </div>
+    </div>
+
     <div class="popup-ranking">
-      ${ranking.map(item => `
+      ${ranking.map((item, idx) => `
         <div class="popup-ranking-row">
-          <span>${item.name}</span>
+          <span>${idx + 1}. ${item.name}</span>
           <strong>${formatPct(item.pct)}</strong>
         </div>
       `).join('')}
