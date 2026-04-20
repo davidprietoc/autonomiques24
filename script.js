@@ -165,12 +165,12 @@ function styleFeature(feature) {
   const isSelected = state.selectedCode === code;
 
   return {
-  color: isSelected ? '#111827' : isHovered ? '#2f241a' : '#cfc9c3',
-  weight: isSelected ? 2.6 : isHovered ? 2.0 : 0.8,
-  fillColor,
-  fillOpacity: isHovered ? Math.min(fillOpacity + 0.06, 1) : fillOpacity
-};
-
+    color: isSelected ? '#111827' : isHovered ? '#2f241a' : '#cfc9c3',
+    weight: isSelected ? 2.6 : isHovered ? 2.0 : 0.8,
+    fillColor,
+    fillOpacity: isHovered ? Math.min(fillOpacity + 0.06, 1) : fillOpacity
+  };
+} 
 function renderModeButtons() {
   const wrap = document.getElementById('mode-buttons');
   if (!wrap) return;
