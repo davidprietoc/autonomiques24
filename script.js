@@ -722,17 +722,68 @@ function bindPanelToggle() {
   const panel = document.getElementById('right-panel');
   if (!btn || !panel) return;
 
-  const sync = () => {
-    const collapsed = panel.classList.contains('collapsed');
-    btn.textContent = collapsed ? '❮' : '❯';
-    btn.setAttribute('aria-expanded', String(!collapsed));
-  };
+  let closeTimer = null;
 
-  sync();
+  function openPanel() {
+    panel.classList.remove('collapsed');
+    btn.textContent = '❯';
+    btn.setAttribute('aria-expanded', 'true');
+  }
 
+  function closePanel() {
+    panel.classList.add('collapsed');
+    btn.textContent = '❮';
+    btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function cancelClose() {
+    if (closeTimer) {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+    }
+  }
+
+  function scheduleClose() {
+    cancelClose();
+    closeTimer = setTimeout(() => {
+      closePanel();
+    }, 220);
+  }
+
+  // estat inicial
+  closePanel();
+
+  // toggle manual
   btn.addEventListener('click', () => {
-    panel.classList.toggle('collapsed');
-    sync();
+    const isCollapsed = panel.classList.contains('collapsed');
+    if (isCollapsed) openPanel();
+    else closePanel();
+  });
+
+  // si entres al panell, s’obre
+  panel.addEventListener('mouseenter', () => {
+    cancelClose();
+    openPanel();
+  });
+
+  // si surts del panell, es tanca amb retard
+  panel.addEventListener('mouseleave', () => {
+    scheduleClose();
+  });
+
+  // zona sensible a la dreta
+  document.addEventListener('mousemove', (e) => {
+    const triggerZone = window.innerWidth < 900 ? 36 : 80;
+    if (window.innerWidth - e.clientX <= triggerZone) {
+      cancelClose();
+      openPanel();
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget) {
+      scheduleClose();
+    }
   });
 }
 
