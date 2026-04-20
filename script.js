@@ -273,7 +273,7 @@ function buildPopup(row) {
   `;
 }
 
-function attachLayerInteractions(layer, feature) {
+function attachLayerInteractions(feature, layer) {
   const code = getFeatureCode(feature);
   if (code == null) return;
 
