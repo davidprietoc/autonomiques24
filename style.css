@@ -598,3 +598,23 @@ body {
     bottom: 12px;
   }
 }
+.custom-basemap-control {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+}
+
+.custom-basemap-control button {
+  border: 0;
+  background: white;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+  font-weight: 600;
+  color: #333;
+}
+
+.custom-basemap-control button:hover {
+  background: #f3f3f3;
+}
