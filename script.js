@@ -12,28 +12,69 @@ const MODES = [
 ];
 
 const PARTY_META = {
-  psc:    { name: 'PSC', color: '#ef4444' },
-  junts:  { name: 'Junts', color: '#14b8a6' },
-  erc:    { name: 'ERC', color: '#f59e0b' },
+  psc: { name: 'PSC', color: '#ef4444' },
+  junts: { name: 'Junts', color: '#14b8a6' },
+  erc: { name: 'ERC', color: '#f59e0b' },
   comuns: { name: 'Comuns', color: '#a21caf' },
-  pp:     { name: 'PP', color: '#2563eb' },
-  vox:    { name: 'VOX', color: '#84cc16' },
-  cup:    { name: 'CUP', color: '#eab308' },
-  ac:     { name: 'AC', color: '#1d4ed8' }
+  pp: { name: 'PP', color: '#2563eb' },
+  vox: { name: 'VOX', color: '#84cc16' },
+  cup: { name: 'CUP', color: '#eab308' },
+  ac: { name: 'AC', color: '#1d4ed8' }
 };
 
 const PARTY_ORDER = ['psc', 'junts', 'erc', 'comuns', 'pp', 'vox', 'cup', 'ac'];
 
+const LEVELS = {
+  catalunya: {
+    geojson: 'data/catalunya.geojson',
+    dades: 'data/dades_catalunya.json',
+    featureKey: null,
+    labelField: null
+  },
+  vegueries: {
+    geojson: 'data/vegueries.geojson',
+    dades: 'data/dades_vegueries.json',
+    featureKey: 'CODIVEGUE',
+    labelField: 'NOMVEGUE'
+  },
+  provincies: {
+    geojson: 'data/provincies.geojson',
+    dades: 'data/dades_provincies.json',
+    featureKey: 'CODIPROV',
+    labelField: 'NOMPROV'
+  },
+  comarques: {
+    geojson: 'data/comarques.geojson',
+    dades: 'data/dades_comarques.json',
+    featureKey: 'CODICOMAR',
+    labelField: 'NOMCOMAR'
+  },
+  municipis: {
+    geojson: 'data/municipis.geojson',
+    dades: 'data/dades_municipis.json',
+    featureKey: 'CODIMUNI',
+    labelField: 'NOMMUNI'
+  },
+  seccions: {
+    geojson: 'data/seccions.geojson',
+    dades: 'data/dades_seccions.json',
+    featureKey: 'codisecc',
+    labelField: 'codisecc'
+  }
+};
+
 const state = {
-  rows: [],
-  rowsByCode: new Map(),
-  geojson: null,
   map: null,
-  layer: null,
   activeMode: MODES[0],
-  hoveredCode: null,
-  selectedCode: null,
-  searchIndex: []
+  currentLevel: null,
+  activeLayer: null,
+  hoveredId: null,
+  selectedId: null,
+  searchIndex: [],
+  levelData: {},
+  levelDataMaps: {},
+  levelGeojsons: {},
+  levelLayers: {}
 };
 
 function getBasePath() {
@@ -44,8 +85,8 @@ function getBasePath() {
 
 async function fetchJson(relativePath) {
   const base = getBasePath();
-  const url = `${base}${relativePath}?v=${Date.now()}`;
-  const res = await fetch(url, { cache: 'no-store' });
+  const url = `${base}/${relativePath}`.replace(/([^:]\/)\/+/g, '$1');
+  const res = await fetch(`${url}?v=${Date.now()}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`No s'ha pogut carregar ${relativePath} (${res.status})`);
   return res.json();
 }
@@ -53,10 +94,6 @@ async function fetchJson(relativePath) {
 function safeNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function hasValidCode(row) {
-  return row && row.codi_municipi !== undefined && row.codi_municipi !== null && row.codi_municipi !== '';
 }
 
 function formatNumber(value) {
@@ -78,7 +115,7 @@ function deltaClass(value) {
   const n = safeNumber(value);
   if (n > 0) return 'positive';
   if (n < 0) return 'negative';
-  return null;
+  return '';
 }
 
 function clamp(value, min, max) {
@@ -107,29 +144,29 @@ function getWinnerColor(winner) {
   return PARTY_META[winner]?.color || '#d4d4d8';
 }
 
-function getFeatureCode(feature) {
-  return safeNumber(feature?.properties?.codi_municipi, null);
+function getLevelByZoom(z) {
+  if (z < 7.5) return 'catalunya';
+  if (z < 8.5) return 'vegueries';
+  if (z < 9.5) return 'provincies';
+  if (z < 10.5) return 'comarques';
+  if (z < 12) return 'municipis';
+  return 'seccions';
 }
 
-function findTopParty(row) {
-  const entries = PARTY_ORDER.map(key => ({
-    key,
-    votes: safeNumber(row?.[`${key}_vots`]),
-    pct: safeNumber(row?.[`${key}_pct`])
-  }));
-  entries.sort((a, b) => b.votes - a.votes);
-  return entries[0] || { key: 'psc', votes: 0, pct: 0 };
+function getFeatureId(level, feature) {
+  if (level === 'catalunya') return 'CAT';
+  const key = LEVELS[level].featureKey;
+  return feature?.properties?.[key] ?? null;
 }
 
-function getRanking(row) {
-  return PARTY_ORDER
-    .map(key => ({
-      key,
-      name: PARTY_META[key].name,
-      votes: safeNumber(row?.[`${key}_vots`]),
-      pct: safeNumber(row?.[`${key}_pct`])
-    }))
-    .sort((a, b) => b.votes - a.votes);
+function getFeatureLabel(level, feature) {
+  if (level === 'catalunya') return 'Catalunya';
+  const field = LEVELS[level].labelField;
+  return feature?.properties?.[field] || feature?.properties?.NOMMUNI || feature?.properties?.NOMCOMAR || feature?.properties?.NOMPROV || feature?.properties?.NOMVEGUE || getFeatureId(level, feature);
+}
+
+function getRow(level, id) {
+  return state.levelDataMaps[level]?.get(String(id)) || null;
 }
 
 function rowValue(row, mode) {
@@ -143,34 +180,270 @@ function formatModeValue(row, mode) {
   return formatPct(rowValue(row, mode), mode.decimals ?? 1);
 }
 
-function styleFeature(feature) {
-  const code = getFeatureCode(feature);
-  const row = state.rowsByCode.get(code);
-  const mode = state.activeMode;
+function findTopParty(row) {
+  const entries = PARTY_ORDER.map(key => ({
+    key,
+    votes: safeNumber(row?.[`${key}_vots`]),
+    pct: safeNumber(row?.[`${key}_pct`])
+  })).sort((a, b) => b.votes - a.votes);
+  return entries[0] || { key: 'psc', votes: 0, pct: 0 };
+}
 
-  let fillColor = '#f6f5f4';
-  let fillOpacity = 0.88;
+function getRanking(row) {
+  return PARTY_ORDER.map(key => ({
+    key,
+    name: PARTY_META[key].name,
+    votes: safeNumber(row?.[`${key}_vots`]),
+    pct: safeNumber(row?.[`${key}_pct`])
+  })).sort((a, b) => b.votes - a.votes);
+}
 
-  if (row) {
-    if (mode.type === 'winner') {
-      fillColor = getWinnerColor(row.winner);
+function styleFeatureFactory(level) {
+  return function(feature) {
+    const id = getFeatureId(level, feature);
+    const row = getRow(level, id);
+    const mode = state.activeMode;
+
+    let fillColor = '#f6f5f4';
+    let fillOpacity = 0.88;
+
+    if (row) {
+      if (mode.type === 'winner') {
+        fillColor = getWinnerColor(row.winner);
+      } else {
+        fillColor = getSequentialColor(rowValue(row, mode), mode.max);
+      }
     } else {
-      fillColor = getSequentialColor(rowValue(row, mode), mode.max);
+      fillOpacity = 0.40;
     }
-  } else {
-    fillOpacity = 0.45;
+
+    const isHovered = state.hoveredId === `${level}:${id}`;
+    const isSelected = state.selectedId === `${level}:${id}`;
+
+    return {
+      color: isSelected ? '#111827' : isHovered ? '#2f241a' : '#cfc9c3',
+      weight: level === 'seccions' ? (isSelected ? 1.5 : isHovered ? 1.1 : 0.35) : (isSelected ? 2.4 : isHovered ? 1.8 : 0.9),
+      fillColor,
+      fillOpacity: isHovered ? Math.min(fillOpacity + 0.06, 1) : fillOpacity
+    };
+  };
+}
+
+function buildPopup(level, feature) {
+  const id = getFeatureId(level, feature);
+  const row = getRow(level, id);
+  const label = getFeatureLabel(level, feature);
+
+  if (!row) {
+    return `
+      <div class="popup-title">${label}</div>
+      <div class="popup-meta">${level}</div>
+      <div class="popup-grid">
+        <div><div class="label">Dades</div><div class="value">No disponibles</div></div>
+      </div>
+    `;
   }
 
-  const isHovered = state.hoveredCode === code;
-  const isSelected = state.selectedCode === code;
+  const ranking = getRanking(row).slice(0, 5);
+  const winnerName = PARTY_META[row.winner]?.name || '—';
+  const winnerPct = row.winner ? formatPct(row[`${row.winner}_pct`] || 0) : '—';
 
-  return {
-    color: isSelected ? '#111827' : isHovered ? '#2f241a' : '#cfc9c3',
-    weight: isSelected ? 2.6 : isHovered ? 2.0 : 0.8,
-    fillColor,
-    fillOpacity: isHovered ? Math.min(fillOpacity + 0.06, 1) : fillOpacity
+  return `
+    <div class="popup-title">${label}</div>
+    <div class="popup-meta">${level}</div>
+
+    <div class="popup-highlight">
+      <span class="popup-highlight-party">${winnerName}</span>
+      <span class="popup-highlight-pct">${winnerPct}</span>
+    </div>
+
+    <div class="popup-grid">
+      <div><div class="label">Participació</div><div class="value">${formatPct(row.participacio_pct)}</div></div>
+      <div><div class="label">Vots vàlids</div><div class="value">${formatNumber(row.vots_valids)}</div></div>
+      <div><div class="label">Bloc esquerres</div><div class="value">${formatPct(row.esquerres_pct)}</div></div>
+      <div><div class="label">Bloc indepe.</div><div class="value">${formatPct(row.independentista_pct)}</div></div>
+    </div>
+
+    <div class="popup-ranking">
+      ${ranking.map((item, idx) => `
+        <div class="popup-ranking-row">
+          <span>${idx + 1}. ${item.name}</span>
+          <strong>${formatPct(item.pct)}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function attachInteractions(level, feature, layer) {
+  const id = getFeatureId(level, feature);
+  const row = getRow(level, id);
+  const compositeId = `${level}:${id}`;
+
+  layer.on({
+    mouseover: () => {
+      state.hoveredId = compositeId;
+      refreshActiveLayerStyles();
+      updateHoverCard(level, id);
+    },
+    mouseout: () => {
+      if (state.selectedId !== compositeId) {
+        state.hoveredId = null;
+      }
+      refreshActiveLayerStyles();
+      if (state.selectedId) {
+        const [selLevel, selId] = state.selectedId.split(':');
+        updateHoverCard(selLevel, selId);
+      } else {
+        hideHoverCard();
+      }
+    },
+    click: () => {
+      state.selectedId = compositeId;
+      refreshActiveLayerStyles();
+      updateHoverCard(level, id);
+      layer.openPopup();
+    }
+  });
+
+  if (row) {
+    layer.bindTooltip(`
+      <div class="map-tooltip">
+        <strong>${getFeatureLabel(level, feature)}</strong><br>
+        ${state.activeMode.label}: <b>${formatModeValue(row, state.activeMode)}</b>
+      </div>
+    `, { sticky: true, direction: 'top', opacity: 1 });
+
+    layer.bindPopup(buildPopup(level, feature), { maxWidth: 360 });
+  }
+}
+
+function createLayer(level) {
+  const geojson = state.levelGeojsons[level];
+  return L.geoJSON(geojson, {
+    style: styleFeatureFactory(level),
+    onEachFeature: (feature, layer) => attachInteractions(level, feature, layer)
+  });
+}
+
+function refreshActiveLayerStyles() {
+  if (!state.activeLayer) return;
+
+  state.activeLayer.eachLayer(layer => {
+    if (!layer.feature) return;
+    const level = state.currentLevel;
+    layer.setStyle(styleFeatureFactory(level)(layer.feature));
+
+    const id = getFeatureId(level, layer.feature);
+    const row = getRow(level, id);
+
+    if (row && layer.getTooltip()) {
+      layer.setTooltipContent(`
+        <div class="map-tooltip">
+          <strong>${getFeatureLabel(level, layer.feature)}</strong><br>
+          ${state.activeMode.label}: <b>${formatModeValue(row, state.activeMode)}</b>
+        </div>
+      `);
+    }
+
+    if (row && layer.getPopup()) {
+      layer.setPopupContent(buildPopup(level, layer.feature));
+    }
+  });
+}
+
+function switchLevel(newLevel) {
+  if (state.currentLevel === newLevel) {
+    refreshActiveLayerStyles();
+    updateSidebarForVisible();
+    return;
+  }
+
+  if (state.activeLayer) {
+    state.map.removeLayer(state.activeLayer);
+  }
+
+  if (!state.levelLayers[newLevel]) {
+    state.levelLayers[newLevel] = createLayer(newLevel);
+  }
+
+  state.currentLevel = newLevel;
+  state.activeLayer = state.levelLayers[newLevel];
+  state.activeLayer.addTo(state.map);
+
+  refreshActiveLayerStyles();
+  updateSidebarForVisible();
+}
+
+function getVisibleRows(level) {
+  const bounds = state.map.getBounds();
+  const rows = [];
+
+  if (!state.activeLayer) return rows;
+
+  state.activeLayer.eachLayer(layer => {
+    if (!layer.feature) return;
+    const layerBounds = layer.getBounds ? layer.getBounds() : null;
+    if (!layerBounds || !bounds.intersects(layerBounds)) return;
+
+    const id = getFeatureId(level, layer.feature);
+    const row = getRow(level, id);
+    if (row) rows.push(row);
+  });
+
+  return rows;
+}
+
+function aggregateRows(rows) {
+  if (!rows.length) return null;
+
+  const total = {
+    id: 'visible',
+    nom: 'Visible',
+    cens: 0,
+    vots_valids: 0,
+    participacio_pct: 0,
+    psc_vots: 0,
+    junts_vots: 0,
+    erc_vots: 0,
+    pp_vots: 0,
+    vox_vots: 0,
+    comuns_vots: 0,
+    cup_vots: 0,
+    ac_vots: 0,
+    esquerres_pct: 0,
+    independentista_pct: 0,
+    winner: null
   };
-} 
+
+  rows.forEach(r => {
+    total.cens += safeNumber(r.cens);
+    total.vots_valids += safeNumber(r.vots_valids);
+    PARTY_ORDER.forEach(p => {
+      total[`${p}_vots`] += safeNumber(r[`${p}_vots`]);
+    });
+  });
+
+  total.participacio_pct = total.cens > 0 ? (total.vots_valids / total.cens) * 100 : 0;
+  PARTY_ORDER.forEach(p => {
+    total[`${p}_pct`] = total.vots_valids > 0 ? (total[`${p}_vots`] / total.vots_valids) * 100 : 0;
+  });
+
+  total.esquerres_pct = total.vots_valids > 0
+    ? ((total.psc_vots + total.erc_vots + total.comuns_vots + total.cup_vots) / total.vots_valids) * 100
+    : 0;
+
+  total.independentista_pct = total.vots_valids > 0
+    ? ((total.junts_vots + total.erc_vots + total.cup_vots + total.ac_vots) / total.vots_valids) * 100
+    : 0;
+
+  total.winner = PARTY_ORDER
+    .map(p => ({ key: p, votes: total[`${p}_vots`] }))
+    .sort((a, b) => b.votes - a.votes)[0]?.key || 'psc';
+
+  return total;
+}
+
 function renderModeButtons() {
   const wrap = document.getElementById('mode-buttons');
   if (!wrap) return;
@@ -185,10 +458,14 @@ function renderModeButtons() {
     btn.addEventListener('click', () => {
       state.activeMode = mode;
       renderModeButtons();
-      updateMapStyles();
       updateLegend();
-      updateSummary();
-      updateHoverCard(state.selectedCode || state.hoveredCode);
+      refreshActiveLayerStyles();
+      updateSidebarForVisible();
+
+      if (state.selectedId) {
+        const [level, id] = state.selectedId.split(':');
+        updateHoverCard(level, id);
+      }
     });
 
     wrap.appendChild(btn);
@@ -249,144 +526,27 @@ function updateLegend() {
   }
 }
 
-function buildPopup(row) {
-  const ranking = getRanking(row).slice(0, 5);
-  const winnerName = PARTY_META[row.winner]?.name || '—';
-  const winnerPct = row.winner ? formatPct(row[`${row.winner}_pct`] || 0) : '—';
-
-  return `
-    <div class="popup-title">${row.municipi || '—'}</div>
-    <div class="popup-meta">${row.comarca || '—'} · ${row.provincia || '—'}</div>
-
-    <div class="popup-highlight">
-      <span class="popup-highlight-party">${winnerName}</span>
-      <span class="popup-highlight-pct">${winnerPct}</span>
-    </div>
-
-    <div class="popup-grid">
-      <div>
-        <div class="label">Participació</div>
-        <div class="value">${formatPct(row.participacio_pct)}</div>
-      </div>
-      <div>
-        <div class="label">Vots vàlids</div>
-        <div class="value">${formatNumber(row.vots_valids)}</div>
-      </div>
-      <div>
-        <div class="label">Bloc esquerres</div>
-        <div class="value">${formatPct(row.esquerres_pct)}</div>
-      </div>
-      <div>
-        <div class="label">Bloc indepe.</div>
-        <div class="value">${formatPct(row.independentista_pct)}</div>
-      </div>
-    </div>
-
-    <div class="popup-ranking">
-      ${ranking.map((item, idx) => `
-        <div class="popup-ranking-row">
-          <span>${idx + 1}. ${item.name}</span>
-          <strong>${formatPct(item.pct)}</strong>
-        </div>
-      `).join('')}
-    </div>
-  `;
+function hideHoverCard() {
+  const card = document.getElementById('hover-card');
+  if (card) card.classList.add('hidden');
 }
 
-function attachLayerInteractions(feature, layer) {
-  const code = getFeatureCode(feature);
-  if (code == null) return;
-
-  layer.on({
-    mouseover: () => {
-      state.hoveredCode = code;
-      layer.setStyle(styleFeature(feature));
-      updateHoverCard(code);
-
-      if (state.layer) {
-        state.layer.eachLayer(l => {
-          if (l !== layer && l.feature) {
-            l.setStyle(styleFeature(l.feature));
-          }
-        });
-      }
-    },
-    mouseout: () => {
-      if (state.selectedCode !== code) {
-        state.hoveredCode = null;
-      }
-      updateMapStyles();
-      updateHoverCard(state.selectedCode);
-    },
-    click: () => {
-      state.selectedCode = code;
-      updateMapStyles();
-      updateHoverCard(code);
-      if (layer.getPopup()) layer.openPopup();
-    }
-  });
-
-  const row = state.rowsByCode.get(code);
-  if (!row) return;
-
-  layer.bindTooltip(`
-    <div class="map-tooltip">
-      <strong>${row.municipi || '—'}</strong>
-      ${row.comarca || '—'} · ${row.provincia || '—'}<br>
-      ${state.activeMode.label}: <b>${formatModeValue(row, state.activeMode)}</b>
-    </div>
-  `, { sticky: true, direction: 'top', opacity: 1 });
-
-  layer.bindPopup(buildPopup(row), { maxWidth: 360 });
-}
-
-function updateMapStyles() {
-  if (!state.layer) return;
-
-  state.layer.eachLayer(layer => {
-    if (!layer.feature) return;
-
-    layer.setStyle(styleFeature(layer.feature));
-
-    const code = getFeatureCode(layer.feature);
-    const row = state.rowsByCode.get(code);
-
-    if (row && layer.getTooltip()) {
-      layer.setTooltipContent(`
-        <div class="map-tooltip">
-          <strong>${row.municipi || '—'}</strong>
-          ${row.comarca || '—'} · ${row.provincia || '—'}<br>
-          ${state.activeMode.label}: <b>${formatModeValue(row, state.activeMode)}</b>
-        </div>
-      `);
-    }
-
-    if (row && layer.getPopup()) {
-      layer.setPopupContent(buildPopup(row));
-    }
-  });
-}
-
-function updateHoverCard(code) {
+function updateHoverCard(level, id) {
   const card = document.getElementById('hover-card');
   if (!card) return;
 
-  if (!code) {
-    card.classList.add('hidden');
-    return;
-  }
-
-  const row = state.rowsByCode.get(Number(code));
+  const row = getRow(level, id);
   if (!row) {
     card.classList.add('hidden');
     return;
   }
 
   const top = findTopParty(row);
+  const label = row.nom || row.id || id;
 
   card.innerHTML = `
-    <h3>${row.municipi || '—'}</h3>
-    <div class="meta">${row.comarca || '—'} · ${row.provincia || '—'}</div>
+    <h3>${label}</h3>
+    <div class="meta">${level}</div>
     <div class="party-badge">
       <span class="party-dot" style="background:${PARTY_META[top.key]?.color || '#999'}"></span>
       Lidera ${PARTY_META[top.key]?.name || '—'}
@@ -398,63 +558,22 @@ function updateHoverCard(code) {
       <div><div class="k">Bloc indepe.</div><div class="v">${formatPct(row.independentista_pct)}</div></div>
     </div>
   `;
-
   card.classList.remove('hidden');
 }
 
-function updateSummary() {
+function updateSummaryFromAggregate(agg, visibleCount) {
+  if (!agg) return;
+
   const mode = state.activeMode;
-  const rows = state.rows;
-  if (!rows.length) return;
-
-  const totalMunicipis = rows.length;
-  const withData = rows.filter(r => rowValue(r, mode) !== null && rowValue(r, mode) !== undefined).length;
-
-  const topRow = mode.type === 'winner'
-    ? rows.reduce((best, r) => {
-        const curr = safeNumber(r?.[`${r.winner}_pct`], -1);
-        const bestVal = best ? safeNumber(best?.[`${best.winner}_pct`], -1) : -1;
-        return curr > bestVal ? r : best;
-      }, null)
-    : rows.reduce((best, r) => (
-        safeNumber(rowValue(r, mode), -Infinity) > safeNumber(best ? rowValue(best, mode) : -Infinity, -Infinity)
-          ? r
-          : best
-      ), null);
-
   let mainValue = '—';
-  let mainDeltaText = '—';
-  let mainDeltaNumber = 0;
 
   if (mode.type === 'winner') {
-    const counts = {};
-    rows.forEach(r => {
-      if (r?.winner) counts[r.winner] = (counts[r.winner] || 0) + 1;
-    });
-    const leaderKey = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    mainValue = PARTY_META[leaderKey]?.name || '—';
-    mainDeltaText = `${counts[leaderKey] || 0} municipis`;
+    mainValue = PARTY_META[agg.winner]?.name || '—';
   } else if (mode.key === 'participacio_pct') {
-    const totalCens = rows.reduce((sum, r) => sum + safeNumber(r.cens), 0);
-    const totalValids = rows.reduce((sum, r) => sum + safeNumber(r.vots_valids), 0);
-    const totalPrevPctWeighted = totalCens > 0
-      ? rows.reduce((sum, r) => sum + (safeNumber(r.participacio_2021_pct) * safeNumber(r.cens)), 0) / totalCens
-      : 0;
-
-    const pct = totalCens > 0 ? (totalValids / totalCens) * 100 : 0;
-    mainValue = formatPct(pct);
-    mainDeltaNumber = pct - totalPrevPctWeighted;
-    mainDeltaText = formatDelta(mainDeltaNumber, '%');
+    mainValue = formatPct(agg.participacio_pct);
   } else {
     const votesKey = mode.key.replace('_pct', '_vots');
-    const deltaKey = mode.key.replace('_pct', '_delta_vots');
-
-    const totalVotes = rows.reduce((sum, r) => sum + safeNumber(r[votesKey]), 0);
-    const totalDelta = rows.reduce((sum, r) => sum + safeNumber(r[deltaKey]), 0);
-
-    mainValue = formatNumber(totalVotes);
-    mainDeltaNumber = totalDelta;
-    mainDeltaText = formatDelta(totalDelta);
+    mainValue = formatNumber(agg[votesKey]);
   }
 
   const mainLabelEl = document.getElementById('summary-main-label');
@@ -468,67 +587,44 @@ function updateSummary() {
   const liderSubEl = document.getElementById('summary-lider-sub');
   const liderPctEl = document.getElementById('summary-lider-pct');
 
-  if (mainLabelEl) mainLabelEl.textContent = mode.summaryLabel;
+  if (mainLabelEl) mainLabelEl.textContent = `${mode.summaryLabel} (${state.currentLevel})`;
   if (mainValueEl) mainValueEl.textContent = mainValue;
   if (mainDeltaEl) {
-    mainDeltaEl.textContent = mainDeltaText;
-    mainDeltaEl.className = `delta ${deltaClass(mainDeltaNumber) || ''}`.trim();
+    mainDeltaEl.textContent = `Visible: ${visibleCount}`;
+    mainDeltaEl.className = 'delta';
   }
 
-  const totalCens = rows.reduce((sum, r) => sum + safeNumber(r.cens), 0);
-  const totalValids = rows.reduce((sum, r) => sum + safeNumber(r.vots_valids), 0);
-  const totalPrevPctWeighted = totalCens > 0
-    ? rows.reduce((sum, r) => sum + (safeNumber(r.participacio_2021_pct) * safeNumber(r.cens)), 0) / totalCens
-    : 0;
-  const partPct = totalCens > 0 ? (totalValids / totalCens) * 100 : 0;
-  const partDeltaNum = partPct - totalPrevPctWeighted;
-
-  if (partValueEl) partValueEl.textContent = formatPct(partPct);
+  if (partValueEl) partValueEl.textContent = formatPct(agg.participacio_pct);
   if (partDeltaEl) {
-    partDeltaEl.textContent = formatDelta(partDeltaNum, '%');
-    partDeltaEl.className = `delta ${deltaClass(partDeltaNum) || ''}`.trim();
+    partDeltaEl.textContent = 'Àmbit visible';
+    partDeltaEl.className = 'delta';
   }
 
-  if (municipisValueEl) municipisValueEl.textContent = formatNumber(withData);
-  if (municipisShareEl) municipisShareEl.textContent = `${withData}/${totalMunicipis}`;
+  if (municipisValueEl) municipisValueEl.textContent = formatNumber(visibleCount);
+  if (municipisShareEl) municipisShareEl.textContent = state.currentLevel;
 
-  if (topRow) {
-    if (liderValueEl) liderValueEl.textContent = topRow.municipi || '—';
-    if (liderSubEl) {
-      liderSubEl.textContent = `${topRow.comarca || '—'} · ${
-        state.activeMode.type === 'winner'
-          ? (PARTY_META[topRow.winner]?.name || '—')
-          : state.activeMode.label
-      }`;
-    }
-    if (liderPctEl) {
-      liderPctEl.textContent = state.activeMode.type === 'winner'
-        ? formatPct(topRow?.[`${topRow.winner}_pct`] || 0)
-        : formatModeValue(topRow, mode);
-    }
-  }
+  const leader = PARTY_ORDER
+    .map(key => ({ key, votes: safeNumber(agg[`${key}_vots`]), pct: safeNumber(agg[`${key}_pct`]) }))
+    .sort((a, b) => b.votes - a.votes)[0];
+
+  if (liderValueEl) liderValueEl.textContent = PARTY_META[leader?.key]?.name || '—';
+  if (liderSubEl) liderSubEl.textContent = 'Partit líder visible';
+  if (liderPctEl) liderPctEl.textContent = formatPct(leader?.pct || 0);
 }
 
-function buildPartyCards() {
+function buildPartyCardsFromAggregate(agg) {
   const container = document.getElementById('party-cards');
   const template = document.getElementById('party-card-template');
-  if (!container || !template) return;
+  if (!container || !template || !agg) return;
 
   container.innerHTML = '';
 
-  const totalValids = state.rows.reduce((sum, r) => sum + safeNumber(r.vots_valids), 0);
-
-  const summaries = PARTY_ORDER.map(key => {
-    const votes = state.rows.reduce((sum, r) => sum + safeNumber(r[`${key}_vots`]), 0);
-    const deltaVotes = state.rows.reduce((sum, r) => sum + safeNumber(r[`${key}_delta_vots`]), 0);
-    const pct = totalValids > 0 ? (votes / totalValids) * 100 : 0;
-    const prevVotes = votes - deltaVotes;
-    const prevPct = totalValids > 0 ? (prevVotes / totalValids) * 100 : 0;
-    const wins = state.rows.filter(r => r.winner === key).length;
-    const prevWins = state.rows.filter(r => r.winner_2021 === key).length;
-
-    return { key, votes, prevVotes, pct, prevPct, wins, prevWins };
-  }).sort((a, b) => b.votes - a.votes);
+  const summaries = PARTY_ORDER.map(key => ({
+    key,
+    votes: safeNumber(agg[`${key}_vots`]),
+    pct: safeNumber(agg[`${key}_pct`]),
+    wins: key === agg.winner ? 1 : 0
+  })).sort((a, b) => b.votes - a.votes);
 
   summaries.forEach(item => {
     const node = template.content.firstElementChild.cloneNode(true);
@@ -536,96 +632,45 @@ function buildPartyCards() {
 
     node.style.borderColor = party.color;
 
-    const partyNameEl = node.querySelector('.party-name');
-    if (partyNameEl) {
-      partyNameEl.textContent = party.name;
-      partyNameEl.style.color = party.color;
-    }
+    node.querySelector('.party-name').textContent = party.name;
+    node.querySelector('.party-name').style.color = party.color;
 
-    const winsEl = node.querySelector('.metric-wins');
-    const winsDeltaEl = node.querySelector('.metric-wins-delta');
-    const votesEl = node.querySelector('.metric-votes');
-    const votesDeltaEl = node.querySelector('.metric-votes-delta');
-    const pctEl = node.querySelector('.metric-pct');
-    const pctDeltaEl = node.querySelector('.metric-pct-delta');
+    node.querySelector('.metric-wins').textContent = item.key === agg.winner ? 'Líder' : '—';
+    node.querySelector('.metric-wins-delta').textContent = state.currentLevel;
 
-    const winsDelta = item.wins - item.prevWins;
-    const voteDelta = item.votes - item.prevVotes;
-    const pctDelta = item.pct - item.prevPct;
+    node.querySelector('.metric-votes').textContent = formatNumber(item.votes);
+    node.querySelector('.metric-votes-delta').textContent = 'visible';
 
-    if (winsEl) winsEl.textContent = formatNumber(item.wins);
-    if (winsDeltaEl) {
-      winsDeltaEl.textContent = formatDelta(winsDelta);
-      const cls = deltaClass(winsDelta);
-      if (cls) winsDeltaEl.classList.add(cls);
-    }
-
-    if (votesEl) votesEl.textContent = formatNumber(item.votes);
-    if (votesDeltaEl) {
-      votesDeltaEl.textContent = formatDelta(voteDelta);
-      const cls = deltaClass(voteDelta);
-      if (cls) votesDeltaEl.classList.add(cls);
-    }
-
-    if (pctEl) pctEl.textContent = formatPct(item.pct);
-    if (pctDeltaEl) {
-      pctDeltaEl.textContent = formatDelta(pctDelta, '%');
-      const cls = deltaClass(pctDelta);
-      if (cls) pctDeltaEl.classList.add(cls);
-    }
+    node.querySelector('.metric-pct').textContent = formatPct(item.pct);
+    node.querySelector('.metric-pct-delta').textContent = '';
 
     container.appendChild(node);
   });
 }
 
-function fitToCatalonia() {
-  if (!state.layer || !state.map) return;
-  state.map.fitBounds(state.layer.getBounds(), { padding: [18, 18] });
+function updateSidebarForVisible() {
+  const rows = getVisibleRows(state.currentLevel);
+  const agg = aggregateRows(rows);
+  updateSummaryFromAggregate(agg, rows.length);
+  buildPartyCardsFromAggregate(agg);
 }
 
 function buildSearchIndex() {
-  const items = [];
+  const idx = [];
 
-  state.rows.forEach(row => {
-    if (!row || !hasValidCode(row)) return;
-
-    items.push({
-      type: 'municipi',
-      label: row.municipi || '—',
-      subtitle: `${row.comarca || '—'} · ${row.provincia || '—'}`,
-      code: row.codi_municipi
+  ['municipis', 'comarques', 'provincies', 'vegueries'].forEach(level => {
+    const rows = state.levelData[level] || [];
+    rows.forEach(row => {
+      idx.push({
+        level,
+        id: row.id,
+        label: row.nom,
+        subtitle: level
+      });
     });
   });
 
-  const comarcaSet = new Map();
-  state.rows.forEach(row => {
-    if (!row?.comarca) return;
-    if (!comarcaSet.has(row.comarca)) {
-      comarcaSet.set(row.comarca, {
-        type: 'comarca',
-        label: row.comarca,
-        subtitle: row.provincia || '—',
-        rows: []
-      });
-    }
-    comarcaSet.get(row.comarca).rows.push(row.codi_municipi);
-  });
-
-  const provSet = new Map();
-  state.rows.forEach(row => {
-    if (!row?.provincia) return;
-    if (!provSet.has(row.provincia)) {
-      provSet.set(row.provincia, {
-        type: 'provincia',
-        label: row.provincia,
-        subtitle: 'Província',
-        rows: []
-      });
-    }
-    provSet.get(row.provincia).rows.push(row.codi_municipi);
-  });
-
-  state.searchIndex = items.concat([...comarcaSet.values()], [...provSet.values()]);
+  state.searchIndex = idx;
 }
 
 function renderSearchResults(matches) {
@@ -639,9 +684,9 @@ function renderSearchResults(matches) {
   }
 
   box.innerHTML = matches.slice(0, 10).map(item => `
-    <div class="search-item" data-type="${item.type}" data-code="${item.code || ''}" data-label="${item.label}">
+    <div class="search-item" data-level="${item.level}" data-id="${item.id}" data-label="${item.label}">
       <strong>${item.label}</strong>
-      <span>${item.type} · ${item.subtitle}</span>
+      <span>${item.subtitle}</span>
     </div>
   `).join('');
 
@@ -649,64 +694,13 @@ function renderSearchResults(matches) {
 
   box.querySelectorAll('.search-item').forEach(el => {
     el.addEventListener('click', () => {
-      const type = el.dataset.type;
-      const label = el.dataset.label;
-
-      if (type === 'municipi') {
-        focusMunicipi(Number(el.dataset.code));
-      } else {
-        focusGroup(type, label);
-      }
-
+      const level = el.dataset.level;
+      const id = el.dataset.id;
+      focusFeature(level, id);
       box.classList.add('hidden');
-
-      const input = document.getElementById('search-input');
-      if (input) input.value = label;
+      document.getElementById('search-input').value = el.dataset.label;
     });
   });
-}
-
-function focusMunicipi(code) {
-  if (!state.layer || !state.map) return;
-
-  let targetLayer = null;
-
-  state.layer.eachLayer(layer => {
-    if (getFeatureCode(layer.feature) === code) targetLayer = layer;
-  });
-
-  if (targetLayer) {
-    state.selectedCode = code;
-    updateMapStyles();
-    state.map.fitBounds(targetLayer.getBounds(), { padding: [40, 40], maxZoom: 11 });
-    if (targetLayer.getPopup()) targetLayer.openPopup();
-    updateHoverCard(code);
-  }
-}
-
-function focusGroup(type, label) {
-  if (!state.layer || !state.map) return;
-
-  const codes = state.rows
-    .filter(r => r?.[type] === label)
-    .map(r => r.codi_municipi);
-
-  let bounds = null;
-
-  state.layer.eachLayer(layer => {
-    if (codes.includes(getFeatureCode(layer.feature))) {
-      bounds = bounds ? bounds.extend(layer.getBounds()) : layer.getBounds();
-    }
-  });
-
-  if (bounds) {
-    state.selectedCode = null;
-    updateMapStyles();
-    state.map.fitBounds(bounds, { padding: [30, 30] });
-
-    const hoverCard = document.getElementById('hover-card');
-    if (hoverCard) hoverCard.classList.add('hidden');
-  }
 }
 
 function bindSearch() {
@@ -715,7 +709,6 @@ function bindSearch() {
 
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
-
     if (!q) {
       renderSearchResults([]);
       return;
@@ -735,6 +728,37 @@ function bindSearch() {
       if (results) results.classList.add('hidden');
     }
   });
+}
+
+function focusFeature(level, id) {
+  const targetZoom = {
+    vegueries: 8,
+    provincies: 9,
+    comarques: 10,
+    municipis: 11,
+    seccions: 13
+  }[level] || 8;
+
+  state.map.setZoom(targetZoom);
+
+  setTimeout(() => {
+    switchLevel(level);
+
+    let targetLayer = null;
+    state.activeLayer.eachLayer(layer => {
+      if (String(getFeatureId(level, layer.feature)) === String(id)) {
+        targetLayer = layer;
+      }
+    });
+
+    if (targetLayer) {
+      state.selectedId = `${level}:${id}`;
+      refreshActiveLayerStyles();
+      state.map.fitBounds(targetLayer.getBounds(), { padding: [40, 40], maxZoom: targetZoom + 1 });
+      if (targetLayer.getPopup()) targetLayer.openPopup();
+      updateHoverCard(level, id);
+    }
+  }, 100);
 }
 
 function bindPanelToggle() {
@@ -765,33 +789,26 @@ function bindPanelToggle() {
 
   function scheduleClose() {
     cancelClose();
-    closeTimer = setTimeout(() => {
-      closePanel();
-    }, 220);
+    closeTimer = setTimeout(closePanel, 220);
   }
 
-  // estat inicial
   closePanel();
 
-  // toggle manual
   btn.addEventListener('click', () => {
     const isCollapsed = panel.classList.contains('collapsed');
     if (isCollapsed) openPanel();
     else closePanel();
   });
 
-  // si entres al panell, s’obre
   panel.addEventListener('mouseenter', () => {
     cancelClose();
     openPanel();
   });
 
-  // si surts del panell, es tanca amb retard
   panel.addEventListener('mouseleave', () => {
     scheduleClose();
   });
 
-  // zona sensible a la dreta
   document.addEventListener('mousemove', (e) => {
     const triggerZone = window.innerWidth < 900 ? 36 : 80;
     if (window.innerWidth - e.clientX <= triggerZone) {
@@ -801,129 +818,72 @@ function bindPanelToggle() {
   });
 
   document.addEventListener('mouseout', (e) => {
-    if (!e.relatedTarget) {
-      scheduleClose();
+    if (!e.relatedTarget) scheduleClose();
+  });
+}
+
+async function loadAllData() {
+  const entries = Object.entries(LEVELS);
+
+  for (const [level, cfg] of entries) {
+    const [geojson, dades] = await Promise.all([
+      fetchJson(cfg.geojson),
+      fetchJson(cfg.dades)
+    ]);
+
+    state.levelGeojsons[level] = geojson;
+    state.levelData[level] = dades;
+    state.levelDataMaps[level] = new Map(dades.map(row => [String(row.id), row]));
+  }
+}
+
+function createMap() {
+  state.map = L.map('map', {
+    zoomControl: true,
+    attributionControl: false,
+    minZoom: 6,
+    maxZoom: 14,
+    preferCanvas: true
+  });
+
+  const initialLayer = createLayer('catalunya');
+  state.levelLayers.catalunya = initialLayer;
+  state.currentLevel = 'catalunya';
+  state.activeLayer = initialLayer;
+  initialLayer.addTo(state.map);
+  state.map.fitBounds(initialLayer.getBounds(), { padding: [18, 18] });
+
+  state.map.on('zoomend', () => {
+    const newLevel = getLevelByZoom(state.map.getZoom());
+    switchLevel(newLevel);
+  });
+
+  state.map.on('moveend', () => {
+    updateSidebarForVisible();
+  });
+
+  state.map.on('click', () => {
+    state.selectedId = null;
+    refreshActiveLayerStyles();
+    if (state.hoveredId) {
+      const [level, id] = state.hoveredId.split(':');
+      updateHoverCard(level, id);
+    } else {
+      hideHoverCard();
     }
   });
 }
 
-function createMap() {
-  const mapEl = document.getElementById('map');
-  if (!mapEl) throw new Error("Falta l'element #map");
-
-  state.map = L.map('map', {
-    zoomControl: true,
-    attributionControl: false,
-    minZoom: 7,
-    maxZoom: 12,
-    preferCanvas: true
-  });
-
-  state.layer = L.geoJSON(state.geojson, {
-    style: styleFeature,
-    onEachFeature: attachLayerInteractions
-  }).addTo(state.map);
-
-  fitToCatalonia();
-
-  state.map.on('click', () => {
-    state.selectedCode = null;
-    updateMapStyles();
-    updateHoverCard(state.hoveredCode);
-  });
-}
-
-function normalizeRows(rows) {
-  if (!Array.isArray(rows)) return [];
-
-  return rows
-    .filter(row => hasValidCode(row))
-    .map(row => ({
-      ...row,
-      codi_municipi: safeNumber(row.codi_municipi),
-      cens: safeNumber(row.cens),
-      abstencio: safeNumber(row.abstencio),
-      vots_candidatures: safeNumber(row.vots_candidatures),
-      vots_valids: safeNumber(row.vots_valids),
-      participacio_pct: safeNumber(row.participacio_pct),
-      participacio_2021_pct: safeNumber(row.participacio_2021_pct),
-      psc_vots: safeNumber(row.psc_vots),
-      psc_pct: safeNumber(row.psc_pct),
-      psc_delta_vots: safeNumber(row.psc_delta_vots),
-      junts_vots: safeNumber(row.junts_vots),
-      junts_pct: safeNumber(row.junts_pct),
-      junts_delta_vots: safeNumber(row.junts_delta_vots),
-      erc_vots: safeNumber(row.erc_vots),
-      erc_pct: safeNumber(row.erc_pct),
-      erc_delta_vots: safeNumber(row.erc_delta_vots),
-      pp_vots: safeNumber(row.pp_vots),
-      pp_pct: safeNumber(row.pp_pct),
-      pp_delta_vots: safeNumber(row.pp_delta_vots),
-      vox_vots: safeNumber(row.vox_vots),
-      vox_pct: safeNumber(row.vox_pct),
-      vox_delta_vots: safeNumber(row.vox_delta_vots),
-      comuns_vots: safeNumber(row.comuns_vots),
-      comuns_pct: safeNumber(row.comuns_pct),
-      comuns_delta_vots: safeNumber(row.comuns_delta_vots),
-      cup_vots: safeNumber(row.cup_vots),
-      cup_pct: safeNumber(row.cup_pct),
-      cup_delta_vots: safeNumber(row.cup_delta_vots),
-      ac_vots: safeNumber(row.ac_vots),
-      ac_pct: safeNumber(row.ac_pct),
-      ac_delta_vots: safeNumber(row.ac_delta_vots),
-      esquerres_pct: safeNumber(row.esquerres_pct),
-      independentista_pct: safeNumber(row.independentista_pct),
-      winner: row.winner || findTopParty(row).key,
-      winner_2021: row.winner_2021 || null
-    }));
-}
-
-function debugDataMatch() {
-  const geoFeatures = state.geojson?.features || [];
-  const geoCodes = geoFeatures
-    .map(f => getFeatureCode(f))
-    .filter(v => v !== null);
-
-  const rowCodes = state.rows.map(r => r.codi_municipi);
-  const matched = geoCodes.filter(code => state.rowsByCode.has(code));
-
-  console.log('DEBUG GEOJSON features:', geoFeatures.length);
-  console.log('DEBUG rows JSON:', state.rows.length);
-  console.log('DEBUG geo codes sample:', geoCodes.slice(0, 10));
-  console.log('DEBUG row codes sample:', rowCodes.slice(0, 10));
-  console.log('DEBUG matched codes:', matched.length);
-
-  const debugEl = document.getElementById('summary-main-delta');
-  if (debugEl) {
-    debugEl.textContent = `match ${matched.length}/${geoFeatures.length}`;
-  }
-}
-
 async function init() {
   try {
-    const [geojson, rawRows] = await Promise.all([
-      fetchJson('/data/base.geojson'),
-      fetchJson('/data/dades_municipals.json')
-    ]);
-
-    state.geojson = geojson;
-    state.rows = normalizeRows(rawRows);
-    state.rowsByCode.clear();
-
-    state.rows.forEach(row => {
-      state.rowsByCode.set(row.codi_municipi, row);
-    });
-
-    debugDataMatch();
-
+    await loadAllData();
     renderModeButtons();
     updateLegend();
-    buildPartyCards();
     buildSearchIndex();
     bindSearch();
     bindPanelToggle();
     createMap();
-    updateSummary();
+    updateSidebarForVisible();
   } catch (error) {
     console.error(error);
     alert(`No s’han pogut carregar les dades.\n\n${error.message}`);
